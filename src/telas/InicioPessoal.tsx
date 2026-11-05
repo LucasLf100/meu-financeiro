@@ -172,7 +172,7 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
       )}
 
       <section className="bloco">
-        <h2>Compromissos por mês</h2>
+        <h2>Saídas por mês</h2>
         <div className="grafico" role="img" aria-label="Contas e faturas dos últimos 6 meses">
           {r.grafico.map((g) => (
             <div key={g.mes} className={`grafico-coluna ${g.mes === mes ? 'atual' : ''}`}>
@@ -182,7 +182,7 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
             </div>
           ))}
         </div>
-        <small className="texto-suave">Contas fixas + faturas de cada mês.</small>
+        <small className="texto-suave">Tudo o que saiu em cada mês: contas, faturas (pelo valor pago), gastos à vista e empresa.</small>
         <button className="botao" onClick={aoAbrirRelatorios}>Ver relatórios</button>
       </section>
 

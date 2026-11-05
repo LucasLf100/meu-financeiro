@@ -4,6 +4,7 @@ import { atrasadasAnteriores, contaEmVigor, contaValeNoMes, ocorrenciasDoMes, ty
 import { limiteUsado, listarFaturas } from './cartoes'
 import { empresaNoBolso, reembolsosPendentes } from './empresa'
 import { recebimentosDoMes } from './recebimentos'
+import { calcularMes } from './relatorio'
 
 export interface Compromisso {
   chave: string
@@ -150,9 +151,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
   const grafico: ResumoPessoal['grafico'] = []
   for (let i = 5; i >= 0; i--) {
     const m = somarMeses(mes, -i)
-    const contas = i === 0 ? contasMes : await ocorrenciasDoMes(m)
-    const valor = contas.reduce((s, o) => s + o.valor, 0) + faturas.filter((f) => f.fatura === m).reduce((s, f) => s + f.total, 0)
-    grafico.push({ mes: m, valor })
+    grafico.push({ mes: m, valor: (await calcularMes(m)).saidas })
   }
 
   const retiradasDoMes = retiradas.filter((r) => mesDe(r.data) === mes).reduce((s, r) => s + r.valor, 0)
