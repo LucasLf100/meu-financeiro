@@ -49,6 +49,30 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
         )}
       </section>
 
+      <section className="cartao-destaque cartao-saidas">
+        <span className="rotulo">A pagar em {MESES[Number(mes.slice(5, 7)) - 1]}</span>
+        <strong className="valor-grande">{formatarReais(r.saidas.total)}</strong>
+        <div className="divisao">
+          <div>
+            <span className="rotulo">Já pago</span>
+            <strong>{formatarReais(r.saidas.pago)}</strong>
+          </div>
+          <div>
+            <span className="rotulo">Falta pagar</span>
+            <strong>{formatarReais(r.saidas.falta)}</strong>
+          </div>
+        </div>
+        {r.saidas.total > 0 && (
+          <div className="progresso-destaque">
+            <BarraProgresso valor={r.saidas.pago} total={r.saidas.total} />
+            <small>
+              Contas fixas {formatarReais(r.saidas.contasFixas)} · Parcelas e cartão {formatarReais(r.saidas.parcelasECartao)} · Gastos avulsos{' '}
+              {formatarReais(r.saidas.gastosAvulsos)}
+            </small>
+          </div>
+        )}
+      </section>
+
       {verDetalhes && (
         <Folha titulo="Como a dívida é calculada" aoFechar={() => setVerDetalhes(false)}>
           <p className="texto-suave">

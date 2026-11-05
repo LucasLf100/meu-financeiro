@@ -475,6 +475,15 @@ button.item:active { background: var(--superficie-2); }
 .grafico-coluna.atual .grafico-barra { background: var(--destaque); }
 .grafico-coluna.atual span { color: var(--texto); font-weight: 700; }
 
+/* Card vermelho: tudo o que sai no mês */
+.cartao-destaque.cartao-saidas,
+:root[data-tema='escuro'] .cartao-destaque.cartao-saidas {
+  background: linear-gradient(135deg, #dc2626, #991b1b);
+  box-shadow: 0 8px 24px -12px #dc2626;
+}
+.cartao-saidas .valor-grande { font-size: 1.8rem; margin-bottom: 12px; }
+.cartao-saidas .progresso-destaque small { line-height: 1.4; }
+
 /* Troca de modo deslizando */
 .conteudo { touch-action: pan-y; }
 .entrar-pela-direita { animation: entrarDireita 0.22s ease-out; }

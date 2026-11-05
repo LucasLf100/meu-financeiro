@@ -41,6 +41,8 @@ export interface ResumoPessoal {
   entradasPrevistas: number
   entradasRecebidas: number
   sobraPrevista: number
+  /** Tudo o que sai no mês: o que já foi pago e o que falta pagar. */
+  saidas: { total: number; pago: number; falta: number; contasFixas: number; parcelasECartao: number; gastosAvulsos: number }
 }
 
 export async function resumoPessoal(): Promise<ResumoPessoal> {
@@ -157,6 +159,18 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
   // Sobra = o que entra no mês − contas e faturas do mês − gastos pagos na hora (crédito já está nas faturas).
   const sobraPrevista = entradasPrevistas - (pagoTudo + pendenteTudo) - gastosAVista
 
+  // Saídas do mês: tudo o que já saiu ou vai sair (contas, parcelas, faturas e gastos pagos na hora).
+  const contasRecorrentesMes = recorrentes.total + recorrentesAtrasadasAntes.filter((o) => o.status !== 'paga').reduce((s, o) => s + o.valor, 0)
+  const saidasTotal = pagoTudo + pendenteTudo + gastosAVista
+  const saidas = {
+    total: saidasTotal,
+    pago: pagoTudo + gastosAVista,
+    falta: pendenteTudo,
+    contasFixas: contasRecorrentesMes,
+    parcelasECartao: saidasTotal - contasRecorrentesMes - gastosAVista,
+    gastosAvulsos: gastosAVista,
+  }
+
   return {
     dividaTotal: venceEsteMes + parcelasFuturas,
     detalhesDivida,
@@ -176,5 +190,6 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     entradasPrevistas,
     entradasRecebidas,
     sobraPrevista,
+    saidas,
   }
 }
