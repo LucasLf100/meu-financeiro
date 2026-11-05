@@ -475,6 +475,24 @@ button.item:active { background: var(--superficie-2); }
 .grafico-coluna.atual .grafico-barra { background: var(--destaque); }
 .grafico-coluna.atual span { color: var(--texto); font-weight: 700; }
 
+.titulo-secao { margin: 10px 4px -6px; font-size: 1rem; }
+
+/* Aviso "toque em voltar de novo para sair" */
+.aviso-sair {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--altura-barra) + env(safe-area-inset-bottom) + 20px);
+  z-index: 60;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgb(17 24 39 / 0.92);
+  color: #fff;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  animation: aparecer 0.2s ease-out;
+}
+
 /* Card vermelho: tudo o que sai no mês */
 .cartao-destaque.cartao-saidas,
 :root[data-tema='escuro'] .cartao-destaque.cartao-saidas {

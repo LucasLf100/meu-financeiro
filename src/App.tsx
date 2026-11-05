@@ -16,6 +16,7 @@ import { Retiradas } from './telas/empresa/Retiradas'
 import { FormGastoEmpresa } from './telas/empresa/Formularios'
 import { Ajustes } from './telas/Ajustes'
 import { Relatorios } from './telas/Relatorios'
+import { aoSairDoApp, rearmarVoltar, useVoltar } from './voltar'
 import { Busca } from './telas/Busca'
 
 const CHAVE_MODO = 'mf-modo'
@@ -72,6 +73,29 @@ export default function App() {
     window.scrollTo(0, 0)
   }
 
+  // Voltar do celular: fecha Ajustes, Busca ou Relatórios; nas outras abas, vai para o Início.
+  // No Início, avisa "toque de novo para sair" e só sai no segundo toque.
+  const [avisoSair, setAvisoSair] = useState(false)
+  useVoltar(() => {
+    if (ajustesAberto) { setAjustesAberto(false); return true }
+    if (relatoriosAberto) { setRelatoriosAberto(false); return true }
+    if (buscaAberta) { setBuscaAberta(false); return true }
+    if (aba !== 'inicio') { irPara('inicio'); return true }
+    return false
+  })
+  useEffect(() => {
+    let tempo: ReturnType<typeof setTimeout> | undefined
+    aoSairDoApp(() => {
+      setAvisoSair(true)
+      clearTimeout(tempo)
+      tempo = setTimeout(() => {
+        setAvisoSair(false)
+        rearmarVoltar()
+      }, 2500)
+    })
+    return () => clearTimeout(tempo)
+  }, [])
+
   if (ajustesAberto) return <Ajustes aoVoltar={() => setAjustesAberto(false)} />
   if (relatoriosAberto) return <Relatorios aoVoltar={() => setRelatoriosAberto(false)} />
   if (buscaAberta) return <Busca aoVoltar={() => setBuscaAberta(false)} />
@@ -117,6 +141,7 @@ export default function App() {
       <BarraInferior modo={modo} aba={aba} aoTrocarAba={irPara} aoNovo={() => setNovoAberto(true)} />
       {novoAberto && modo === 'pessoal' && <FormGasto aoFechar={() => setNovoAberto(false)} />}
       {novoAberto && modo === 'empresa' && <FormGastoEmpresa aoFechar={() => setNovoAberto(false)} />}
+      {avisoSair && <div className="aviso-sair" role="status">Toque em voltar de novo para sair</div>}
     </div>
   )
 }

@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type ContaFixa } from '../db'
 import { formatarReais, lerValor } from '../dinheiro'
-import { formatarDia, formatarDiaCurto, hoje, mesAtual, nomeMes, prazo } from '../datas'
-import { apagarConta, editarConta, encerrarConta, ocorrenciasDoMes, type ModoEdicao, type OcorrenciaConta } from '../regras/contas'
+import { formatarDia, formatarDiaCurto, hoje, mesAtual, nomeMes, prazo, somarMeses } from '../datas'
+import { apagarConta, contaValeNoMes, editarConta, encerrarConta, ocorrenciasDoMes, type ModoEdicao, type OcorrenciaConta } from '../regras/contas'
 import { BarraProgresso, Campo, Etiqueta, Folha, Interruptor, Opcoes, SeletorMes, Vazio, valorParaTexto, mascararValor } from '../componentes/ui'
 import { SeletorCategoria } from '../componentes/SeletorCategoria'
 
@@ -11,6 +11,7 @@ export function Contas() {
   const [mes, setMes] = useState(mesAtual())
   const [aberta, setAberta] = useState<OcorrenciaConta | null>(null)
   const [nova, setNova] = useState(false)
+  const [editando, setEditando] = useState<{ conta: ContaFixa & { id: number }; mes: string } | null>(null)
   const ocorrencias = useLiveQuery(() => ocorrenciasDoMes(mes), [mes])
   const categorias = useLiveQuery(() => db.categorias.toArray(), [], [])
 
@@ -21,6 +22,9 @@ export function Contas() {
 
   return (
     <div className="tela">
+      <TodasAsContas aoEditar={setEditando} />
+
+      <h3 className="titulo-secao">Mês a mês</h3>
       <SeletorMes mes={mes} aoMudar={setMes} />
 
       <section className="bloco">
@@ -68,7 +72,89 @@ export function Contas() {
 
       {aberta && <AcoesConta ocorrencia={aberta} aoFechar={() => setAberta(null)} />}
       {nova && <FormConta mes={mes} aoFechar={() => setNova(false)} />}
+      {editando && <FormConta conta={editando.conta} mes={editando.mes} aoFechar={() => setEditando(null)} />}
     </div>
+  )
+}
+
+interface ContaResumo {
+  conta: ContaFixa & { id: number }
+  aPartirDe: string // primeiro mês que ainda conta (este mês ou o início, se for no futuro)
+  restantes?: number // parcelas que faltam, contando a deste mês
+}
+
+/** Visão geral: todas as contas fixas em vigor, com o total por mês. */
+function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: number }; mes: string }) => void }) {
+  const dados = useLiveQuery(async () => {
+    const [contas, categorias] = await Promise.all([db.contas.toArray(), db.categorias.toArray()])
+    const atual = mesAtual()
+    const lista: ContaResumo[] = []
+    for (const conta of contas) {
+      const aPartirDe = conta.inicio > atual ? conta.inicio : atual
+      if (!contaValeNoMes(conta, aPartirDe)) continue // encerrada ou já quitada
+      let restantes: number | undefined
+      if (conta.totalParcelas) {
+        restantes = 0
+        for (let m = aPartirDe; restantes < 600 && contaValeNoMes(conta, m); m = somarMeses(m, 1)) restantes++
+      }
+      lista.push({ conta: conta as ContaFixa & { id: number }, aPartirDe, restantes })
+    }
+    return { lista: lista.sort((a, b) => b.conta.valor - a.conta.valor), categorias, atual }
+  })
+
+  if (!dados) return null
+  const { lista, categorias, atual } = dados
+  if (lista.length === 0) return null
+
+  const recorrentes = lista.filter((c) => c.restantes === undefined)
+  const parceladas = lista.filter((c) => c.restantes !== undefined)
+  const soma = (l: ContaResumo[]) => l.reduce((s, c) => s + c.conta.valor, 0)
+  const faltaParceladas = parceladas.reduce((s, c) => s + c.conta.valor * (c.restantes ?? 0), 0)
+
+  const linha = (c: ContaResumo) => {
+    const cat = categorias.find((x) => x.id === c.conta.categoriaId)
+    const detalhe = [
+      `dia ${c.conta.diaVencimento}`,
+      c.restantes !== undefined ? `faltam ${c.restantes} de ${c.conta.totalParcelas}` : c.conta.valorVariavel ? 'valor varia' : null,
+      c.aPartirDe > atual ? `começa em ${nomeMes(c.aPartirDe)}` : null,
+    ].filter(Boolean).join(' · ')
+    return (
+      <button key={c.conta.id} className="item" onClick={() => aoEditar({ conta: c.conta, mes: c.aPartirDe })}>
+        <span className="item-icone" style={{ background: `${cat?.cor ?? '#94a3b8'}22` }}>{cat?.icone ?? '📄'}</span>
+        <span className="item-texto">
+          <strong>{c.conta.nome}</strong>
+          <small>{detalhe}</small>
+        </span>
+        <strong className="item-valor">{c.conta.valorVariavel ? '~' : ''}{formatarReais(c.conta.valor)}</strong>
+      </button>
+    )
+  }
+
+  return (
+    <>
+      <section className="bloco">
+        <span className="rotulo texto-suave">Todas as contas fixas · por mês</span>
+        <strong className="valor-medio">{formatarReais(soma(lista))}</strong>
+        <div className="linha-resumo">
+          <small className="texto-suave">Recorrentes: {formatarReais(soma(recorrentes))}</small>
+          {parceladas.length > 0 && <small className="texto-suave">Parceladas: {formatarReais(soma(parceladas))}</small>}
+        </div>
+        {parceladas.length > 0 && <small className="texto-suave">Ainda faltam {formatarReais(faltaParceladas)} nas parceladas.</small>}
+      </section>
+
+      {recorrentes.length > 0 && (
+        <section className="grupo">
+          <h3 className="grupo-titulo"><span>Recorrentes ({recorrentes.length})</span><span>{formatarReais(soma(recorrentes))}</span></h3>
+          <div className="lista">{recorrentes.map(linha)}</div>
+        </section>
+      )}
+      {parceladas.length > 0 && (
+        <section className="grupo">
+          <h3 className="grupo-titulo"><span>Parceladas ({parceladas.length})</span><span>{formatarReais(soma(parceladas))}</span></h3>
+          <div className="lista">{parceladas.map(linha)}</div>
+        </section>
+      )}
+    </>
   )
 }
 

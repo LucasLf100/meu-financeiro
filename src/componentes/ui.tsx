@@ -1,8 +1,15 @@
 import { useEffect, type ReactNode } from 'react'
 import { nomeMes, somarMeses } from '../datas'
+import { useVoltar } from '../voltar'
 
 /** Janela que sobe de baixo. */
 export function Folha({ titulo, aoFechar, children }: { titulo: string; aoFechar: () => void; children: ReactNode }) {
+  // O voltar do celular fecha a janela em vez de sair do app.
+  useVoltar(() => {
+    aoFechar()
+    return true
+  })
+
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => e.key === 'Escape' && aoFechar()
     window.addEventListener('keydown', tecla)
