@@ -140,6 +140,46 @@ export async function marcarReembolsado(itens: ItemReembolso[], data = hoje()) {
   })
 }
 
+export interface EmpresaNoBolso {
+  /** A opção "somar a empresa no Pessoal" está ligada. */
+  ativo: boolean
+  /** Já saiu do bolso neste mês (pagamentos e gastos da empresa "pago por mim"). */
+  pago: number
+  /** Vai sair neste mês: cobranças "pago por mim" que renovam neste mês (ou já venceram) e ainda não foram lançadas. */
+  falta: number
+  /** Cobranças recorrentes que você paga pela empresa, para a visão geral das contas. */
+  recorrentes: Array<{ id: number; plataforma: string; tipo: 'mensal' | 'anual'; valorReais: number; proxima?: string }>
+}
+
+/** Quanto da empresa sai do seu bolso no mês (enquanto a empresa não tem conta própria). */
+export async function empresaNoBolso(mes = mesAtual()): Promise<EmpresaNoBolso> {
+  const ativo = await lerConfig<boolean>('empresaNoPessoal', true)
+  const [cobrancas, plataformas, pagamentos, gastos, cotacao] = await Promise.all([
+    db.cobrancas.toArray(),
+    db.plataformas.toArray(),
+    db.pagamentosCobranca.toArray(),
+    db.gastosEmpresa.toArray(),
+    lerCotacao(),
+  ])
+  const pago =
+    pagamentos.filter((p) => p.pagoPorMim && mesDe(p.pagoEm) === mes).reduce((s, p) => s + p.valor, 0) +
+    gastos.filter((g) => g.pagoPorMim && mesDe(g.data) === mes).reduce((s, g) => s + g.valor, 0)
+
+  let falta = 0
+  const recorrentes: EmpresaNoBolso['recorrentes'] = []
+  for (const c of cobrancas) {
+    if (!c.pagoPorMim || (c.tipo !== 'mensal' && c.tipo !== 'anual')) continue
+    const plataforma = plataformas.find((p) => p.id === c.plataformaId)
+    if (!plataformaConta(plataforma)) continue
+    const valorReais = emReais(c.valor, c.moeda, cotacao)
+    if (!valorReais) continue
+    recorrentes.push({ id: c.id!, plataforma: plataforma!.nome, tipo: c.tipo, valorReais, proxima: c.proximaRenovacao })
+    // Renova neste mês (ou já passou) e ainda não tem pagamento lançado depois da renovação anterior.
+    if (c.proximaRenovacao && mesDe(c.proximaRenovacao) <= mes) falta += valorReais
+  }
+  return { ativo, pago, falta, recorrentes: recorrentes.sort((a, b) => b.valorReais - a.valorReais) }
+}
+
 export interface ResumoEmpresa {
   custoMensal: number
   gastoDoMes: number

@@ -68,6 +68,7 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
             <small>
               Contas fixas {formatarReais(r.saidas.contasFixas)} · Parcelas e cartão {formatarReais(r.saidas.parcelasECartao)} · Gastos avulsos{' '}
               {formatarReais(r.saidas.gastosAvulsos)}
+              {r.saidas.empresa > 0 && <> · Empresa (do meu bolso) {formatarReais(r.saidas.empresa)}</>}
             </small>
           </div>
         )}

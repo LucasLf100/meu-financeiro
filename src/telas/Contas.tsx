@@ -6,6 +6,7 @@ import { formatarDia, formatarDiaCurto, hoje, mesAtual, nomeMes, prazo, somarMes
 import { apagarConta, contaValeNoMes, editarConta, encerrarConta, ocorrenciasDoMes, type ModoEdicao, type OcorrenciaConta } from '../regras/contas'
 import { BarraProgresso, Campo, Etiqueta, Folha, Interruptor, Opcoes, SeletorMes, Vazio, valorParaTexto, mascararValor } from '../componentes/ui'
 import { SeletorCategoria } from '../componentes/SeletorCategoria'
+import { empresaNoBolso } from '../regras/empresa'
 
 export function Contas() {
   const [mes, setMes] = useState(mesAtual())
@@ -86,7 +87,7 @@ interface ContaResumo {
 /** Visão geral: todas as contas fixas em vigor, com o total por mês. */
 function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: number }; mes: string }) => void }) {
   const dados = useLiveQuery(async () => {
-    const [contas, categorias] = await Promise.all([db.contas.toArray(), db.categorias.toArray()])
+    const [contas, categorias, empresa] = await Promise.all([db.contas.toArray(), db.categorias.toArray(), empresaNoBolso()])
     const atual = mesAtual()
     const lista: ContaResumo[] = []
     for (const conta of contas) {
@@ -99,12 +100,15 @@ function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: 
       }
       lista.push({ conta: conta as ContaFixa & { id: number }, aPartirDe, restantes })
     }
-    return { lista: lista.sort((a, b) => b.conta.valor - a.conta.valor), categorias, atual }
+    return { lista: lista.sort((a, b) => b.conta.valor - a.conta.valor), categorias, atual, empresa }
   })
 
   if (!dados) return null
-  const { lista, categorias, atual } = dados
-  if (lista.length === 0) return null
+  const { lista, categorias, atual, empresa } = dados
+  // Cobranças da empresa pagas do meu bolso, em média por mês (anual ÷ 12).
+  const daEmpresa = empresa.ativo ? empresa.recorrentes : []
+  const empresaPorMes = daEmpresa.reduce((s, c) => s + (c.tipo === 'anual' ? Math.round(c.valorReais / 12) : c.valorReais), 0)
+  if (lista.length === 0 && daEmpresa.length === 0) return null
 
   const recorrentes = lista.filter((c) => c.restantes === undefined)
   const parceladas = lista.filter((c) => c.restantes !== undefined)
@@ -134,11 +138,12 @@ function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: 
     <>
       <section className="bloco">
         <span className="rotulo texto-suave">Todas as contas fixas · por mês</span>
-        <strong className="valor-medio">{formatarReais(soma(lista))}</strong>
+        <strong className="valor-medio">{formatarReais(soma(lista) + empresaPorMes)}</strong>
         <div className="linha-resumo">
           <small className="texto-suave">Recorrentes: {formatarReais(soma(recorrentes))}</small>
           {parceladas.length > 0 && <small className="texto-suave">Parceladas: {formatarReais(soma(parceladas))}</small>}
         </div>
+        {daEmpresa.length > 0 && <small className="texto-suave">Empresa (do meu bolso): ~{formatarReais(empresaPorMes)} por mês, contando os anuais divididos por 12.</small>}
         {parceladas.length > 0 && <small className="texto-suave">Ainda faltam {formatarReais(faltaParceladas)} nas parceladas.</small>}
       </section>
 
@@ -152,6 +157,27 @@ function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: 
         <section className="grupo">
           <h3 className="grupo-titulo"><span>Parceladas ({parceladas.length})</span><span>{formatarReais(soma(parceladas))}</span></h3>
           <div className="lista">{parceladas.map(linha)}</div>
+        </section>
+      )}
+      {daEmpresa.length > 0 && (
+        <section className="grupo">
+          <h3 className="grupo-titulo"><span>Empresa, do meu bolso ({daEmpresa.length})</span><span>~{formatarReais(empresaPorMes)}/mês</span></h3>
+          <div className="lista">
+            {daEmpresa.map((c) => (
+              <div key={c.id} className="item item-estatico">
+                <span className="item-icone">💼</span>
+                <span className="item-texto">
+                  <strong>{c.plataforma}</strong>
+                  <small>
+                    {c.tipo === 'mensal' ? 'mensal' : `anual · ~${formatarReais(Math.round(c.valorReais / 12))}/mês`}
+                    {c.proxima ? ` · renova ${formatarDia(c.proxima)}` : ''}
+                  </small>
+                </span>
+                <strong className="item-valor">{formatarReais(c.valorReais)}</strong>
+              </div>
+            ))}
+          </div>
+          <small className="texto-suave">Para mudar, vá ao modo Empresa. Para não somar no Pessoal, desligue em Ajustes.</small>
         </section>
       )}
     </>

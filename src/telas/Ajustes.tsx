@@ -61,6 +61,7 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
   const ultimoBackup = useLiveQuery(() => lerConfig<string | null>('ultimoBackup', null), [], null)
   const cotacao = useLiveQuery(() => lerConfig<number>('cotacaoDolar', 550), [], 550)
   const pagoPorMimPadrao = useLiveQuery(() => lerConfig<boolean>('pagoPorMimPadrao', true), [], true)
+  const empresaNoPessoal = useLiveQuery(() => lerConfig<boolean>('empresaNoPessoal', true), [], true)
 
   const [tema, setTema] = useState<Tema>(lerTema)
   const [textoCotacao, setTextoCotacao] = useState('')
@@ -200,6 +201,12 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
               dica="Deixe ligado enquanto a empresa não tiver CNPJ e conta própria."
               ligado={pagoPorMimPadrao}
               aoMudar={(v) => salvarConfig('pagoPorMimPadrao', v)}
+            />
+            <Interruptor
+              rotulo="Somar a empresa no Pessoal"
+              dica="Os gastos da empresa pagos por mim entram no card vermelho, na sobra do mês e na aba Contas."
+              ligado={empresaNoPessoal}
+              aoMudar={(v) => salvarConfig('empresaNoPessoal', v)}
             />
             <Produtos />
             <ApagarEmpresa aoApagar={() => setMensagem({ tipo: 'ok', texto: 'Dados da Empresa apagados. O modo Empresa está vazio.' })} />

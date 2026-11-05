@@ -2,7 +2,7 @@ import { db, type Cartao } from '../db'
 import { diasAte, mesAtual, mesDe, somarMeses } from '../datas'
 import { atrasadasAnteriores, contaValeNoMes, ocorrenciasDoMes } from './contas'
 import { limiteUsado, listarFaturas } from './cartoes'
-import { reembolsosPendentes } from './empresa'
+import { empresaNoBolso, reembolsosPendentes } from './empresa'
 import { recebimentosDoMes } from './recebimentos'
 
 export interface Compromisso {
@@ -42,12 +42,12 @@ export interface ResumoPessoal {
   entradasRecebidas: number
   sobraPrevista: number
   /** Tudo o que sai no mês: o que já foi pago e o que falta pagar. */
-  saidas: { total: number; pago: number; falta: number; contasFixas: number; parcelasECartao: number; gastosAvulsos: number }
+  saidas: { total: number; pago: number; falta: number; contasFixas: number; parcelasECartao: number; gastosAvulsos: number; empresa: number }
 }
 
 export async function resumoPessoal(): Promise<ResumoPessoal> {
   const mes = mesAtual()
-  const [contasMes, contasAtrasadas, faturas, cartoes, pagamentosFatura, reembolsos, retiradas, gastos, recebimentos, contas] = await Promise.all([
+  const [contasMes, contasAtrasadas, faturas, cartoes, pagamentosFatura, reembolsos, retiradas, gastos, recebimentos, contas, empresa] = await Promise.all([
     ocorrenciasDoMes(mes),
     atrasadasAnteriores(mes),
     listarFaturas(),
@@ -58,6 +58,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     db.gastos.toArray(),
     recebimentosDoMes(mes),
     db.contas.toArray(),
+    empresaNoBolso(mesAtual()),
   ])
 
   const compromissos: Compromisso[] = []
@@ -156,19 +157,23 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
   const gastosAVista = gastos.filter((g) => mesDe(g.data) === mes && g.forma !== 'credito').reduce((s, g) => s + g.valor, 0)
   const entradasPrevistas = recebimentos.previsto + retiradasDoMes
   const entradasRecebidas = recebimentos.recebido + retiradasDoMes
-  // Sobra = o que entra no mês − contas e faturas do mês − gastos pagos na hora (crédito já está nas faturas).
-  const sobraPrevista = entradasPrevistas - (pagoTudo + pendenteTudo) - gastosAVista
+  // Empresa paga do meu bolso (se a opção estiver ligada em Ajustes).
+  const empresaPago = empresa.ativo ? empresa.pago : 0
+  const empresaFalta = empresa.ativo ? empresa.falta : 0
+  // Sobra = o que entra no mês − contas e faturas do mês − gastos pagos na hora − empresa do meu bolso.
+  const sobraPrevista = entradasPrevistas - (pagoTudo + pendenteTudo) - gastosAVista - empresaPago - empresaFalta
 
   // Saídas do mês: tudo o que já saiu ou vai sair (contas, parcelas, faturas e gastos pagos na hora).
   const contasRecorrentesMes = recorrentes.total + recorrentesAtrasadasAntes.filter((o) => o.status !== 'paga').reduce((s, o) => s + o.valor, 0)
-  const saidasTotal = pagoTudo + pendenteTudo + gastosAVista
+  const saidasTotal = pagoTudo + pendenteTudo + gastosAVista + empresaPago + empresaFalta
   const saidas = {
     total: saidasTotal,
-    pago: pagoTudo + gastosAVista,
-    falta: pendenteTudo,
+    pago: pagoTudo + gastosAVista + empresaPago,
+    falta: pendenteTudo + empresaFalta,
     contasFixas: contasRecorrentesMes,
-    parcelasECartao: saidasTotal - contasRecorrentesMes - gastosAVista,
+    parcelasECartao: pagoTudo + pendenteTudo - contasRecorrentesMes,
     gastosAvulsos: gastosAVista,
+    empresa: empresaPago + empresaFalta,
   }
 
   return {
