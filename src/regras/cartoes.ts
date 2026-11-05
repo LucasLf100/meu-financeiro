@@ -174,14 +174,22 @@ export async function recalcularFaturasDoCartao(cartao: Cartao & { id: number })
 
 /** Contas fixas pagas neste cartão que vencem no mês da fatura (assinaturas, mensalidades…). */
 export async function contasDoCartao(cartaoId: number, fatura: string): Promise<OcorrenciaConta[]> {
-  const cartao = await db.cartoes.get(cartaoId)
-  // Sem cartão escolhido, reconhece pelo nome (ex.: "Anuidade do cartão Bradesco").
-  const palavra = cartao?.nome.split(' ')[0]?.toLowerCase() ?? ''
+  const cartoes = (await db.cartoes.toArray()).sort((a, b) => a.id! - b.id!)
   return (await ocorrenciasDoMes(fatura)).filter(
-    (o) =>
-      formaDaConta(o.conta) === 'cartao' &&
-      (o.conta.cartaoId === cartaoId || (o.conta.cartaoId === undefined && !!palavra && o.conta.nome.toLowerCase().includes(palavra))),
+    (o) => formaDaConta(o.conta) === 'cartao' && cartaoDaConta(o.conta.nome, o.conta.cartaoId, cartoes) === cartaoId,
   )
+}
+
+/**
+ * Em qual cartão a conta é paga. Sem cartão escolhido: o cartão citado no nome
+ * (ex.: "Anuidade do cartão Bradesco"); se nenhum, o primeiro cartão ativo cadastrado.
+ */
+export function cartaoDaConta(nome: string, cartaoId: number | undefined, cartoes: Cartao[]): number | undefined {
+  if (cartaoId !== undefined && cartoes.some((c) => c.id === cartaoId)) return cartaoId
+  const nomeMinusculo = nome.toLowerCase()
+  const citado = cartoes.find((c) => nomeMinusculo.includes(c.nome.split(' ')[0].toLowerCase()))
+  if (citado) return citado.id
+  return (cartoes.find((c) => c.ativo) ?? cartoes[0])?.id
 }
 
 /**

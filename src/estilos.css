@@ -365,6 +365,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .folha-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .folha-corpo { display: flex; flex-direction: column; gap: 14px; overflow-y: auto; margin: 0 -20px; padding: 2px 20px 4px; }
+/* Nada dentro da janela encolhe: quem rola é a janela, não as listas. */
+.folha-corpo > * { flex-shrink: 0; }
+.tela > * { flex-shrink: 0; }
 
 .seletor-mes { display: flex; align-items: center; justify-content: space-between; padding: 2px 0; }
 .seletor-mes strong { text-transform: capitalize; }
