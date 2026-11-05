@@ -1,30 +1,129 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db } from '../db'
+import { db, type Categoria, type FormaConta } from '../db'
 import { formatarReais } from '../dinheiro'
-import { mesAtual, nomeMes, nomeMesCurto, somarMeses } from '../datas'
-import { ocorrenciasDoMes } from '../regras/contas'
+import { mesAtual, mesDe, nomeMes, nomeMesCurto, somarMeses } from '../datas'
+import { contaValeNoMes, formaDaConta, infoForma, ocorrenciasDoMes } from '../regras/contas'
+import { contasDoCartao } from '../regras/cartoes'
+import { empresaNoBolso } from '../regras/empresa'
+import { recebimentosDoMes } from '../regras/recebimentos'
 import { BarraProgresso, SeletorMes } from '../componentes/ui'
 
-async function dadosDoMes(mes: string) {
-  const [gastos, contas, parcelas] = await Promise.all([
-    db.gastos.where('data').between(`${mes}-01`, `${mes}-31`, true, true).toArray(),
+type FormaRelatorio = Exclude<FormaConta, 'varia'> | 'indefinida'
+
+interface MesRelatorio {
+  contasFixas: number
+  faturas: number
+  aVista: number
+  empresa: number
+  saidas: number
+  entradas: number
+  /** Valor por categoria (id) e itens especiais (chave texto). */
+  porCategoria: Map<number | string, number>
+  porForma: Map<FormaRelatorio, number>
+}
+
+const ESPECIAIS: Record<string, { nome: string; icone: string }> = {
+  empresa: { nome: 'Empresa (do meu bolso)', icone: '💼' },
+  cartaoSemDetalhe: { nome: 'Outras compras no cartão', icone: '💳' },
+  semCategoria: { nome: 'Sem categoria', icone: '📦' },
+}
+
+/** Tudo o que entrou e saiu num mês, sem contar nada duas vezes. */
+async function calcularMes(mes: string): Promise<MesRelatorio> {
+  const [contas, gastosDoMes, cartoes, parcelasDoMes, pagamentosFatura, empresa, recebimentos, retiradas] = await Promise.all([
     ocorrenciasDoMes(mes),
+    db.gastos.where('data').between(`${mes}-01`, `${mes}-31`, true, true).toArray(),
+    db.cartoes.toArray(),
     db.parcelas.where({ fatura: mes }).toArray(),
+    db.pagamentosFatura.where({ fatura: mes }).toArray(),
+    empresaNoBolso(mes),
+    recebimentosDoMes(mes),
+    db.retiradas.toArray(),
   ])
-  return { gastos, contas, parcelas }
+  const gastosDasParcelas = await db.gastos.bulkGet([...new Set(parcelasDoMes.map((p) => p.gastoId))])
+
+  const porCategoria = new Map<number | string, number>()
+  const porForma = new Map<FormaRelatorio, number>()
+  const somar = <K,>(mapa: Map<K, number>, chave: K, valor: number) => valor && mapa.set(chave, (mapa.get(chave) ?? 0) + valor)
+
+  // Contas fixas (recorrentes e parcelas de financiamento).
+  let contasFixas = 0
+  for (const o of contas) {
+    contasFixas += o.valor
+    somar(porCategoria, o.conta.categoriaId ?? 'semCategoria', o.valor)
+    const forma = o.pagamento?.forma ?? formaDaConta(o.conta)
+    somar(porForma, !forma || forma === 'varia' ? 'indefinida' : forma, o.valor)
+  }
+
+  // Faturas: compras e parcelas que vencem neste mês. Se a fatura foi paga, vale o valor pago
+  // (menos as contas fixas do cartão, que já estão acima).
+  let faturas = 0
+  for (const cartao of cartoes) {
+    const parcelas = parcelasDoMes.filter((p) => p.cartaoId === cartao.id)
+    const somaParcelas = parcelas.reduce((s, p) => s + p.valor, 0)
+    const pagamento = pagamentosFatura.find((p) => p.cartaoId === cartao.id)
+    const contasNoCartao = (await contasDoCartao(cartao.id!, mes)).reduce((s, o) => s + o.valor, 0)
+    const valor = pagamento ? Math.max(somaParcelas, pagamento.valor - contasNoCartao) : somaParcelas
+    if (!valor) continue
+    faturas += valor
+    somar(porForma, 'cartao', valor)
+    for (const p of parcelas) {
+      const gasto = gastosDasParcelas.find((g) => g?.id === p.gastoId)
+      somar(porCategoria, gasto?.categoriaId ?? 'semCategoria', p.valor)
+    }
+    somar(porCategoria, 'cartaoSemDetalhe', valor - somaParcelas)
+  }
+
+  // Gastos pagos na hora (no crédito, já entram pela fatura).
+  let aVista = 0
+  for (const g of gastosDoMes) {
+    if (g.forma === 'credito') continue
+    aVista += g.valor
+    somar(porCategoria, g.categoriaId, g.valor)
+    somar(porForma, g.forma, g.valor)
+  }
+
+  // Empresa paga do meu bolso (se a opção estiver ligada).
+  const valorEmpresa = empresa.ativo ? empresa.pago + empresa.falta : 0
+  somar(porCategoria, 'empresa', valorEmpresa)
+
+  const entradas = recebimentos.previsto + retiradas.filter((r) => mesDe(r.data) === mes).reduce((s, r) => s + r.valor, 0)
+
+  return {
+    contasFixas,
+    faturas,
+    aVista,
+    empresa: valorEmpresa,
+    saidas: contasFixas + faturas + aVista + valorEmpresa,
+    entradas,
+    porCategoria,
+    porForma,
+  }
+}
+
+/** Parcelas já comprometidas nos próximos meses: cartão (faturas não pagas) + contas com número de parcelas. */
+async function comprometidoNosProximos(meses: number) {
+  const [parcelas, pagamentos, contas] = await Promise.all([db.parcelas.toArray(), db.pagamentosFatura.toArray(), db.contas.toArray()])
+  const pagas = new Set(pagamentos.map((p) => `${p.cartaoId}|${p.fatura}`))
+  return Array.from({ length: meses }, (_, i) => {
+    const m = somarMeses(mesAtual(), i + 1)
+    const cartao = parcelas.filter((p) => p.fatura === m && !pagas.has(`${p.cartaoId}|${m}`)).reduce((s, p) => s + p.valor, 0)
+    const financiamentos = contas.filter((c) => c.totalParcelas && contaValeNoMes(c, m)).reduce((s, c) => s + c.valor, 0)
+    return { mes: m, cartao, financiamentos, total: cartao + financiamentos }
+  })
 }
 
 export function Relatorios({ aoVoltar }: { aoVoltar: () => void }) {
   const [mes, setMes] = useState(mesAtual())
   const dados = useLiveQuery(async () => {
-    const [atual, anterior, categorias, todasParcelas] = await Promise.all([
-      dadosDoMes(mes),
-      dadosDoMes(somarMeses(mes, -1)),
+    const [atual, anterior, categorias, proximos] = await Promise.all([
+      calcularMes(mes),
+      calcularMes(somarMeses(mes, -1)),
       db.categorias.toArray(),
-      db.parcelas.toArray(),
+      comprometidoNosProximos(6),
     ])
-    return { atual, anterior, categorias, todasParcelas }
+    return { atual, anterior, categorias, proximos }
   }, [mes])
 
   return (
@@ -37,111 +136,140 @@ export function Relatorios({ aoVoltar }: { aoVoltar: () => void }) {
         <span style={{ width: 40 }} />
       </header>
       <main className="conteudo">
-        {dados && <Conteudo mes={mes} setMes={setMes} {...dados} />}
+        <div className="tela">
+          <SeletorMes mes={mes} aoMudar={setMes} />
+          {dados && <Conteudo mes={mes} {...dados} />}
+        </div>
       </main>
     </div>
   )
 }
 
-type Dados = Awaited<ReturnType<typeof dadosDoMes>>
-
 function Conteudo({
   mes,
-  setMes,
   atual,
   anterior,
   categorias,
-  todasParcelas,
+  proximos,
 }: {
   mes: string
-  setMes: (m: string) => void
-  atual: Dados
-  anterior: Dados
-  categorias: Array<{ id?: number; nome: string; icone: string; cor: string }>
-  todasParcelas: Array<{ fatura: string; valor: number }>
+  atual: MesRelatorio
+  anterior: MesRelatorio
+  categorias: Categoria[]
+  proximos: Awaited<ReturnType<typeof comprometidoNosProximos>>
 }) {
-  const somaPorCategoria = (d: Dados) => {
-    const mapa = new Map<number, number>()
-    for (const g of d.gastos) mapa.set(g.categoriaId, (mapa.get(g.categoriaId) ?? 0) + g.valor)
-    for (const o of d.contas) if (o.conta.categoriaId) mapa.set(o.conta.categoriaId, (mapa.get(o.conta.categoriaId) ?? 0) + o.valor)
-    return mapa
+  const sobra = atual.entradas - atual.saidas
+
+  const nomeCategoria = (chave: number | string) => {
+    if (typeof chave === 'string') return ESPECIAIS[chave]
+    const c = categorias.find((x) => x.id === chave)
+    return c ? { nome: c.nome, icone: c.icone } : ESPECIAIS.semCategoria
   }
-  const agora = somaPorCategoria(atual)
-  const antes = somaPorCategoria(anterior)
-  const linhas = [...new Set([...agora.keys(), ...antes.keys()])]
-    .map((id) => ({ id, valor: agora.get(id) ?? 0, antes: antes.get(id) ?? 0, categoria: categorias.find((c) => c.id === id) }))
-    .filter((l) => l.valor > 0 || l.antes > 0)
+  const linhasCategoria = [...new Set([...atual.porCategoria.keys(), ...anterior.porCategoria.keys()])]
+    .map((chave) => ({ chave, valor: atual.porCategoria.get(chave) ?? 0, antes: anterior.porCategoria.get(chave) ?? 0, ...nomeCategoria(chave) }))
+    .filter((l) => l.valor > 0)
     .sort((a, b) => b.valor - a.valor)
-  const totalCategorias = linhas.reduce((s, l) => s + l.valor, 0)
-  const totalAntes = linhas.reduce((s, l) => s + l.antes, 0)
 
-  // Para onde foi: contas fixas + faturas do mês + gastos pagos na hora (crédito já está nas faturas).
-  const contasFixas = atual.contas.reduce((s, o) => s + o.valor, 0)
-  const faturas = atual.parcelas.reduce((s, p) => s + p.valor, 0)
-  const aVista = atual.gastos.filter((g) => g.forma !== 'credito').reduce((s, g) => s + g.valor, 0)
-  const totalDestino = contasFixas + faturas + aVista
+  const formas = [...atual.porForma.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])
+  const maiorProximo = Math.max(1, ...proximos.map((p) => p.total))
 
-  // Parcelas já comprometidas nos próximos 6 meses.
-  const proximos = Array.from({ length: 6 }, (_, i) => {
-    const m = somarMeses(mesAtual(), i)
-    return { mes: m, valor: todasParcelas.filter((p) => p.fatura === m).reduce((s, p) => s + p.valor, 0) }
-  })
-  const maiorProximo = Math.max(1, ...proximos.map((p) => p.valor))
+  if (atual.saidas === 0 && atual.entradas === 0) {
+    return <p className="texto-suave centro">Nada lançado em {nomeMes(mes)}.</p>
+  }
 
   return (
-    <div className="tela">
-      <SeletorMes mes={mes} aoMudar={setMes} />
-
+    <>
       <section className="bloco">
-        <h2>Para onde foi o dinheiro</h2>
-        <strong className="valor-medio">{formatarReais(totalDestino)}</strong>
-        {[
-          ['Contas fixas', contasFixas],
-          ['Faturas de cartão', faturas],
-          ['Gastos pagos na hora', aVista],
-        ].map(([rotulo, valor]) => (
-          <div key={rotulo as string} className="linha-categoria">
-            <span>{rotulo}</span>
-            <strong>{formatarReais(valor as number)}</strong>
-            <BarraProgresso valor={valor as number} total={totalDestino} />
-          </div>
-        ))}
-        <small className="texto-suave">Compras no crédito entram pela fatura do mês em que vencem.</small>
+        <h2>Entradas × saídas</h2>
+        <div className="linha-resumo">
+          <span>Entrou</span>
+          <strong className="texto-ok">{formatarReais(atual.entradas)}</strong>
+        </div>
+        <div className="linha-resumo">
+          <span>Saiu</span>
+          <strong className="texto-perigo">{formatarReais(atual.saidas)}</strong>
+        </div>
+        <div className="linha-resumo">
+          <strong>{sobra >= 0 ? 'Sobrou' : 'Faltou'}</strong>
+          <strong className={sobra >= 0 ? 'texto-ok' : 'texto-perigo'}>{formatarReais(Math.abs(sobra))}</strong>
+        </div>
+        {atual.entradas === 0 && <small className="texto-suave">Cadastre o salário em Contas → A receber para ver a sobra.</small>}
       </section>
 
       <section className="bloco">
         <div className="linha-resumo">
-          <h2>Por categoria</h2>
-          <Variacao agora={totalCategorias} antes={totalAntes} />
+          <h2>Para onde foi o dinheiro</h2>
+          <Variacao agora={atual.saidas} antes={anterior.saidas} />
         </div>
-        <small className="texto-suave">Gastos avulsos + contas fixas, comparando com {nomeMes(somarMeses(mes, -1))}.</small>
-        {linhas.length === 0 && <p className="texto-suave">Nada lançado neste mês.</p>}
-        {linhas.map((l) => (
-          <div key={l.id} className="linha-categoria">
-            <span>{l.categoria?.icone} {l.categoria?.nome ?? 'Sem categoria'}</span>
+        <strong className="valor-medio">{formatarReais(atual.saidas)}</strong>
+        {(
+          [
+            ['Contas fixas', atual.contasFixas],
+            ['Faturas de cartão (compras e parcelas)', atual.faturas],
+            ['Gastos pagos na hora', atual.aVista],
+            ['Empresa, do meu bolso', atual.empresa],
+          ] as const
+        )
+          .filter(([, v]) => v > 0)
+          .map(([rotulo, valor]) => (
+            <div key={rotulo} className="linha-categoria">
+              <span>{rotulo}</span>
+              <strong>{formatarReais(valor)}</strong>
+              <BarraProgresso valor={valor} total={atual.saidas} />
+            </div>
+          ))}
+        <small className="texto-suave">
+          Compras no crédito entram pela fatura do mês em que vencem. Fatura paga vale pelo valor pago. Assinaturas do cartão contam em “Contas fixas”.
+        </small>
+      </section>
+
+      <section className="bloco">
+        <h2>Por categoria</h2>
+        <small className="texto-suave">Comparando com {nomeMes(somarMeses(mes, -1))}.</small>
+        {linhasCategoria.map((l) => (
+          <div key={String(l.chave)} className="linha-categoria">
+            <span>{l.icone} {l.nome}</span>
             <span className="valor-com-variacao">
               <strong>{formatarReais(l.valor)}</strong>
               <Variacao agora={l.valor} antes={l.antes} />
             </span>
-            <BarraProgresso valor={l.valor} total={totalCategorias} />
+            <BarraProgresso valor={l.valor} total={atual.saidas} />
           </div>
         ))}
       </section>
 
+      {formas.length > 0 && (
+        <section className="bloco">
+          <h2>Como você pagou</h2>
+          {formas.map(([forma, valor]) => {
+            const info = forma === 'indefinida' ? { icone: '🔀', rotulo: 'A definir (escolho ao pagar)' } : infoForma(forma)
+            return (
+              <div key={forma} className="linha-categoria">
+                <span>{info?.icone} {info?.rotulo}</span>
+                <strong>{formatarReais(valor)}</strong>
+                <BarraProgresso valor={valor} total={atual.saidas - atual.empresa} />
+              </div>
+            )
+          })}
+        </section>
+      )}
+
       <section className="bloco">
         <h2>Parcelas já comprometidas</h2>
-        <div className="grafico" role="img" aria-label="Parcelas de cartão nos próximos 6 meses">
-          {proximos.map((p, i) => (
-            <div key={p.mes} className={`grafico-coluna ${i === 0 ? 'atual' : ''}`}>
-              <small>{p.valor ? formatarReais(p.valor).replace(/,\d\d$/, '') : ''}</small>
-              <div className="grafico-barra" style={{ height: `${Math.max(2, (p.valor / maiorProximo) * 100)}%` }} />
+        <div className="grafico" role="img" aria-label="Parcelas dos próximos 6 meses">
+          {proximos.map((p) => (
+            <div key={p.mes} className="grafico-coluna">
+              <small>{p.total ? formatarReais(p.total).replace(/,\d\d$/, '') : ''}</small>
+              <div className="grafico-barra" style={{ height: `${Math.max(2, (p.total / maiorProximo) * 100)}%` }} />
               <span>{nomeMesCurto(p.mes)}</span>
             </div>
           ))}
         </div>
-        <small className="texto-suave">Quanto das próximas faturas já está comprometido com compras parceladas.</small>
+        <small className="texto-suave">
+          Próximos 6 meses: parcelas do cartão ainda não pagas + contas com número de parcelas (carro, moto, financiamentos).
+        </small>
       </section>
-    </div>
+    </>
   )
 }
 
