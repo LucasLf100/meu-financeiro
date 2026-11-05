@@ -52,8 +52,9 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
       {verDetalhes && (
         <Folha titulo="Como a dívida é calculada" aoFechar={() => setVerDetalhes(false)}>
           <p className="texto-suave">
-            Entra o que ainda não foi pago: contas fixas deste mês (e atrasadas), faturas de cartão e parcelas futuras
-            (do cartão e de contas fixas com número de parcelas). Contas já marcadas como pagas e gastos no débito, Pix ou dinheiro não entram.
+            Dívida é o que tem fim: parcelas de contas fixas com número de parcelas (financiamento, empréstimo) e o cartão
+            (faturas e parcelas futuras). Só entra o que ainda não foi pago. Contas recorrentes, como luz, água e telefone,
+            ficam no bloco “Contas fixas do mês”.
           </p>
           {(['agora', 'futuro'] as const).map((quando) => {
             const itens = r.detalhesDivida.filter((d) => d.quando === quando)
@@ -83,10 +84,35 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
             )
           })}
           <p className="texto-suave">
-            Cadastrou uma conta e ela não aparece? Confira na aba Contas se ela começa neste mês e se não está marcada como paga.
+            Um financiamento não aparece? Na aba Contas, edite a conta e ligue “Tem número de parcelas”.
           </p>
         </Folha>
       )}
+
+      <section className="bloco">
+        <div className="linha-resumo">
+          <h2>Contas fixas do mês</h2>
+          <button className="botao-link" onClick={() => aoIrPara('contas')}>{r.recorrentes.quantidade ? 'Ver' : 'Cadastrar'}</button>
+        </div>
+        {r.recorrentes.quantidade === 0 ? (
+          <p className="texto-suave">Luz, água, telefone, internet, aluguel… cadastre na aba Contas as contas que se repetem todo mês.</p>
+        ) : (
+          <>
+            <div className="linha-resumo">
+              <span>Total do mês</span>
+              <strong>{formatarReais(r.recorrentes.total)}</strong>
+            </div>
+            <BarraProgresso valor={r.recorrentes.pago} total={r.recorrentes.total} perigo={r.recorrentes.atrasadas > 0} />
+            <div className="linha-resumo">
+              <small className="texto-suave">{formatarReais(r.recorrentes.pago)} pagos</small>
+              <small className={r.recorrentes.atrasadas ? 'texto-perigo' : 'texto-suave'}>
+                Falta {formatarReais(r.recorrentes.falta)}
+                {r.recorrentes.atrasadas ? ` · ${r.recorrentes.atrasadas} atrasada${r.recorrentes.atrasadas > 1 ? 's' : ''}` : ''}
+              </small>
+            </div>
+          </>
+        )}
+      </section>
 
       <section className="bloco">
         <div className="linha-resumo">

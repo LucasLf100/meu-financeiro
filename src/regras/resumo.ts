@@ -12,6 +12,8 @@ export interface Compromisso {
   valor: number
   vencimento: string
   atrasado: boolean
+  /** true = é dívida (conta com parcelas ou fatura); false = conta recorrente sem fim */
+  divida: boolean
 }
 
 export interface ItemDivida {
@@ -27,6 +29,8 @@ export interface ResumoPessoal {
   venceEsteMes: number
   parcelasFuturas: number
   pagoNoMes: number
+  /** Contas fixas recorrentes (sem número de parcelas) deste mês */
+  recorrentes: { total: number; pago: number; falta: number; atrasadas: number; quantidade: number }
   atrasados: Compromisso[]
   proximos: Compromisso[]
   cartoes: Array<{ cartao: Cartao; usado: number }>
@@ -64,6 +68,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
       valor: o.valor,
       vencimento: o.vencimento,
       atrasado: o.status === 'atrasada',
+      divida: !!o.parcela,
     })
   }
 
@@ -85,6 +90,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
       valor: f.total,
       vencimento: f.vencimento,
       atrasado: diasAte(f.vencimento) < 0,
+      divida: true,
     })
   }
 
@@ -106,7 +112,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     detalhesDivida.push({ rotulo: `Cartão ${nome}`, detalhe: `parcelas em ${meses} fatura${meses > 1 ? 's' : ''} futura${meses > 1 ? 's' : ''}`, valor, quando: 'futuro' })
   }
   detalhesDivida.unshift(
-    ...compromissos.map((c) => ({
+    ...compromissos.filter((c) => c.divida).map((c) => ({
       rotulo: c.nome,
       detalhe: `${c.atrasado ? 'atrasada · venceu' : 'vence'} ${c.vencimento.slice(8, 10)}/${c.vencimento.slice(5, 7)}`,
       valor: c.valor,
@@ -114,10 +120,25 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     })),
   )
 
-  const venceEsteMes = compromissos.reduce((s, c) => s + c.valor, 0)
-  const pagoNoMes =
-    contasMes.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0) +
-    pagamentosFatura.filter((p) => p.fatura === mes).reduce((s, p) => s + p.valor, 0)
+  // Dívida deste mês: só parcelas (de contas com fim e do cartão).
+  const venceEsteMes = compromissos.filter((c) => c.divida).reduce((s, c) => s + c.valor, 0)
+  const pagoFaturas = pagamentosFatura.filter((p) => p.fatura === mes).reduce((s, p) => s + p.valor, 0)
+  const pagoNoMes = contasMes.filter((o) => o.status === 'paga' && o.parcela).reduce((s, o) => s + o.valor, 0) + pagoFaturas
+
+  // Contas recorrentes (luz, água, telefone…): custo do mês, não dívida.
+  const recorrentesMes = contasMes.filter((o) => !o.parcela)
+  const recorrentesAtrasadasAntes = contasAtrasadas.filter((o) => !o.parcela)
+  const recorrentes = {
+    total: recorrentesMes.reduce((s, o) => s + o.valor, 0),
+    pago: recorrentesMes.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0),
+    falta: [...recorrentesAtrasadasAntes, ...recorrentesMes].filter((o) => o.status !== 'paga').reduce((s, o) => s + o.valor, 0),
+    atrasadas: [...recorrentesAtrasadasAntes, ...recorrentesMes].filter((o) => o.status === 'atrasada').length,
+    quantidade: recorrentesMes.length,
+  }
+
+  // Tudo o que sai no mês (dívida + recorrentes), pago ou não: usado na sobra.
+  const pagoTudo = contasMes.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0) + pagoFaturas
+  const pendenteTudo = compromissos.reduce((s, c) => s + c.valor, 0)
 
   // Gráfico: quanto havia para pagar em cada um dos últimos 6 meses (contas + faturas).
   const grafico: ResumoPessoal['grafico'] = []
@@ -134,7 +155,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
   const entradasPrevistas = recebimentos.previsto + retiradasDoMes
   const entradasRecebidas = recebimentos.recebido + retiradasDoMes
   // Sobra = o que entra no mês − contas e faturas do mês − gastos pagos na hora (crédito já está nas faturas).
-  const sobraPrevista = entradasPrevistas - (pagoNoMes + venceEsteMes) - gastosAVista
+  const sobraPrevista = entradasPrevistas - (pagoTudo + pendenteTudo) - gastosAVista
 
   return {
     dividaTotal: venceEsteMes + parcelasFuturas,
@@ -142,6 +163,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     venceEsteMes,
     parcelasFuturas,
     pagoNoMes,
+    recorrentes,
     atrasados: compromissos.filter((c) => c.atrasado).sort((a, b) => a.vencimento.localeCompare(b.vencimento)),
     proximos: compromissos
       .filter((c) => !c.atrasado && diasAte(c.vencimento) <= 7)
