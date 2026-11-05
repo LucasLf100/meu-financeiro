@@ -72,7 +72,7 @@ export function Contas() {
           const c = categorias.find((x) => x.id === o.conta.categoriaId)
           return (
             <button key={o.conta.id} className="item" onClick={() => setAberta(o)}>
-              <span className="item-icone" style={{ background: `${c?.cor ?? '#94a3b8'}22` }}>{c?.icone ?? '📄'}</span>
+              <span className="item-icone" style={{ background: `${c?.cor ?? '#94a3b8'}22` }}>{c?.icone ?? '📄'}<MarcaPagamento status={o.status} /></span>
               <span className="item-texto">
                 <strong>{o.conta.nome}</strong>
                 <small>
@@ -217,7 +217,12 @@ function TodasAsContas({ aoAbrir }: { aoAbrir: (e: { conta: ContaFixa & { id: nu
 export function EtiquetaStatus({ status }: { status: OcorrenciaConta['status'] }) {
   if (status === 'paga') return <Etiqueta tipo="ok">Paga</Etiqueta>
   if (status === 'atrasada') return <Etiqueta tipo="perigo">Atrasada</Etiqueta>
-  return <Etiqueta tipo="neutra">Pendente</Etiqueta>
+  return <Etiqueta tipo="perigo">A pagar</Etiqueta>
+}
+
+/** Bolinha no canto do ícone: verde se paga, vermelha se não. */
+export function MarcaPagamento({ status }: { status: OcorrenciaConta['status'] }) {
+  return <span className={`marca-pagamento ${status === 'paga' ? 'paga' : 'aberta'}`} aria-label={status === 'paga' ? 'Paga' : 'Não paga'} />
 }
 
 export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaConta; aoFechar: () => void }) {

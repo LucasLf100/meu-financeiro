@@ -477,6 +477,20 @@ button.item:active { background: var(--superficie-2); }
 
 .titulo-secao { margin: 10px 4px -6px; font-size: 1rem; }
 
+/* Bolinha de pago (verde) / não pago (vermelha) no canto do ícone da conta */
+.item-icone { position: relative; }
+.marca-pagamento {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--superficie);
+  border-radius: 50%;
+}
+.marca-pagamento.paga { background: #16a34a; }
+.marca-pagamento.aberta { background: #dc2626; }
+
 /* Aviso "toque em voltar de novo para sair" */
 .aviso-sair {
   position: fixed;

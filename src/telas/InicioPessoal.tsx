@@ -4,9 +4,9 @@ import { formatarReais } from '../dinheiro'
 import { formatarDiaCurto, mesAtual, MESES, nomeMesCurto, prazo } from '../datas'
 import { resumoPessoal, type Compromisso, type ResumoPessoal } from '../regras/resumo'
 import { formaDaConta, infoForma, type OcorrenciaConta } from '../regras/contas'
-import { AcoesConta } from './Contas'
+import { AcoesConta, EtiquetaStatus, MarcaPagamento } from './Contas'
 import { AvisoBackup } from '../componentes/AvisoBackup'
-import { BarraProgresso, Etiqueta, Folha } from '../componentes/ui'
+import { BarraProgresso, Folha } from '../componentes/ui'
 import type { Aba } from '../componentes/BarraInferior'
 
 interface Props {
@@ -266,7 +266,7 @@ function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; 
                 const forma = infoForma(formaDaConta(o.conta))
                 return (
                   <button key={o.conta.id} className="item" onClick={() => setAberta(o)}>
-                    <span className="item-icone" title={forma?.rotulo ?? 'Forma de pagamento não informada'}>{forma?.icone ?? '📄'}</span>
+                    <span className="item-icone" title={forma?.rotulo ?? 'Forma de pagamento não informada'}>{forma?.icone ?? '📄'}<MarcaPagamento status={o.status} /></span>
                     <span className="item-texto">
                       <strong>{o.conta.nome.replace(/ · cart[aã]o .*$/i, '')}</strong>
                       <small>
@@ -276,7 +276,7 @@ function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; 
                     </span>
                     <span className="item-direita">
                       <strong className="item-valor">{o.valorEstimado ? '~' : ''}{formatarReais(o.valor)}</strong>
-                      {o.status === 'paga' ? <Etiqueta tipo="ok">Paga</Etiqueta> : o.status === 'atrasada' ? <Etiqueta tipo="perigo">Atrasada</Etiqueta> : null}
+                      <EtiquetaStatus status={o.status} />
                     </span>
                   </button>
                 )
