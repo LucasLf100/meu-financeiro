@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { formatarReais } from '../dinheiro'
 import { formatarDiaCurto, mesAtual, MESES, nomeMesCurto, prazo } from '../datas'
-import { resumoPessoal, type Compromisso } from '../regras/resumo'
+import { resumoPessoal, type Compromisso, type ResumoPessoal } from '../regras/resumo'
+import { formaDaConta, infoForma } from '../regras/contas'
 import { AvisoBackup } from '../componentes/AvisoBackup'
-import { BarraProgresso, Folha } from '../componentes/ui'
+import { BarraProgresso, Etiqueta, Folha } from '../componentes/ui'
 import type { Aba } from '../componentes/BarraInferior'
 
 interface Props {
@@ -114,30 +115,7 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
         </Folha>
       )}
 
-      <section className="bloco">
-        <div className="linha-resumo">
-          <h2>Contas fixas do mês</h2>
-          <button className="botao-link" onClick={() => aoIrPara('contas')}>{r.recorrentes.quantidade ? 'Ver' : 'Cadastrar'}</button>
-        </div>
-        {r.recorrentes.quantidade === 0 ? (
-          <p className="texto-suave">Luz, água, telefone, internet, aluguel… cadastre na aba Contas as contas que se repetem todo mês.</p>
-        ) : (
-          <>
-            <div className="linha-resumo">
-              <span>Total do mês</span>
-              <strong>{formatarReais(r.recorrentes.total)}</strong>
-            </div>
-            <BarraProgresso valor={r.recorrentes.pago} total={r.recorrentes.total} perigo={r.recorrentes.atrasadas > 0} />
-            <div className="linha-resumo">
-              <small className="texto-suave">{formatarReais(r.recorrentes.pago)} pagos</small>
-              <small className={r.recorrentes.atrasadas ? 'texto-perigo' : 'texto-suave'}>
-                Falta {formatarReais(r.recorrentes.falta)}
-                {r.recorrentes.atrasadas ? ` · ${r.recorrentes.atrasadas} atrasada${r.recorrentes.atrasadas > 1 ? 's' : ''}` : ''}
-              </small>
-            </div>
-          </>
-        )}
-      </section>
+      <ContasDoMes contas={r.contasDoMes} aoVer={() => aoIrPara('contas')} />
 
       <section className="bloco">
         <div className="linha-resumo">
@@ -245,5 +223,65 @@ function ListaCompromissos({ itens, aoIrPara }: { itens: Compromisso[]; aoIrPara
         </button>
       ))}
     </div>
+  )
+}
+
+/** Todas as contas fixas do mês (recorrentes e parcelas), com o ícone de por onde cada uma é paga. */
+function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; aoVer: () => void }) {
+  const { mes: mesDasContas, itens } = contas
+  const total = itens.reduce((s, o) => s + o.valor, 0)
+  const pago = itens.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0)
+  const atrasadas = itens.filter((o) => o.status === 'atrasada').length
+  const outroMes = mesDasContas !== mesAtual()
+
+  return (
+    <section className="bloco">
+      <div className="linha-resumo">
+        <h2>Contas fixas de {MESES[Number(mesDasContas.slice(5, 7)) - 1]}</h2>
+        <button className="botao-link" onClick={aoVer}>{itens.length ? 'Ver' : 'Cadastrar'}</button>
+      </div>
+      {itens.length === 0 ? (
+        <p className="texto-suave">Luz, água, telefone, parcelas do carro… cadastre na aba Contas o que você paga todo mês.</p>
+      ) : (
+        <>
+          {outroMes && <small className="texto-suave">Nenhuma conta neste mês. Mostrando o próximo.</small>}
+          <div className="linha-resumo">
+            <span>Total</span>
+            <strong>{formatarReais(total)}</strong>
+          </div>
+          <BarraProgresso valor={pago} total={total} perigo={atrasadas > 0} />
+          <div className="linha-resumo">
+            <small className="texto-suave">{formatarReais(pago)} pagos</small>
+            <small className={atrasadas ? 'texto-perigo' : 'texto-suave'}>
+              Falta {formatarReais(total - pago)}
+              {atrasadas ? ` · ${atrasadas} atrasada${atrasadas > 1 ? 's' : ''}` : ''}
+            </small>
+          </div>
+          <div className="lista">
+            {[...itens]
+              .sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor)
+              .map((o) => {
+                const forma = infoForma(formaDaConta(o.conta))
+                return (
+                  <button key={o.conta.id} className="item" onClick={aoVer}>
+                    <span className="item-icone" title={forma?.rotulo ?? 'Forma de pagamento não informada'}>{forma?.icone ?? '📄'}</span>
+                    <span className="item-texto">
+                      <strong>{o.conta.nome.replace(/ · cart[aã]o .*$/i, '')}</strong>
+                      <small>
+                        {forma ? `${forma.rotulo} · ` : ''}dia {Number(o.vencimento.slice(8, 10))}
+                        {o.parcela ? ` · parcela ${o.parcela.numero} de ${o.parcela.total}` : ''}
+                      </small>
+                    </span>
+                    <span className="item-direita">
+                      <strong className="item-valor">{o.valorEstimado ? '~' : ''}{formatarReais(o.valor)}</strong>
+                      {o.status === 'paga' ? <Etiqueta tipo="ok">Paga</Etiqueta> : o.status === 'atrasada' ? <Etiqueta tipo="perigo">Atrasada</Etiqueta> : null}
+                    </span>
+                  </button>
+                )
+              })}
+          </div>
+        </>
+      )}
+    </section>
   )
 }

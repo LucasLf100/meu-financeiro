@@ -1,6 +1,6 @@
 import { db, type Cartao } from '../db'
 import { diasAte, mesAtual, mesDe, somarMeses } from '../datas'
-import { atrasadasAnteriores, contaValeNoMes, ocorrenciasDoMes } from './contas'
+import { atrasadasAnteriores, contaEmVigor, contaValeNoMes, ocorrenciasDoMes, type OcorrenciaConta } from './contas'
 import { limiteUsado, listarFaturas } from './cartoes'
 import { empresaNoBolso, reembolsosPendentes } from './empresa'
 import { recebimentosDoMes } from './recebimentos'
@@ -41,6 +41,8 @@ export interface ResumoPessoal {
   entradasPrevistas: number
   entradasRecebidas: number
   sobraPrevista: number
+  /** Todas as contas fixas de um mês (o atual; se não houver nenhuma, o próximo). */
+  contasDoMes: { mes: string; itens: OcorrenciaConta[] }
   /** Tudo o que sai no mês: o que já foi pago e o que falta pagar. */
   saidas: { total: number; pago: number; falta: number; contasFixas: number; parcelasECartao: number; gastosAvulsos: number; empresa: number }
 }
@@ -102,8 +104,9 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     if (!conta.ativa || !conta.totalParcelas) continue
     let valor = 0
     let quantidade = 0
-    for (let m = conta.inicio > mes ? conta.inicio : somarMeses(mes, 1); quantidade < 600; m = somarMeses(m, 1)) {
-      if (!contaValeNoMes(conta, m)) break
+    // Percorre os meses enquanto a conta estiver em vigor; anual só conta no mês em que vence.
+    for (let m = conta.inicio > mes ? conta.inicio : somarMeses(mes, 1), passos = 0; passos < 1200 && contaEmVigor(conta, m); m = somarMeses(m, 1), passos++) {
+      if (!contaValeNoMes(conta, m)) continue
       valor += conta.valor
       quantidade++
     }
@@ -196,5 +199,6 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     entradasRecebidas,
     sobraPrevista,
     saidas,
+    contasDoMes: contasMes.length ? { mes, itens: contasMes } : { mes: somarMeses(mes, 1), itens: await ocorrenciasDoMes(somarMeses(mes, 1)) },
   }
 }

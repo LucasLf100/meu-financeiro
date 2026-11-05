@@ -37,8 +37,12 @@ export interface ContaFixa {
   fim?: string // AAAA-MM (último mês); vazio = sem fim
   totalParcelas?: number
   parcelaInicial?: number // número da parcela no mês de início (padrão 1)
+  formaPagamento?: FormaConta // por onde a conta é paga (cartão, boleto, Pix…)
+  frequencia?: 'mensal' | 'anual' // padrão: mensal. Anual vence uma vez por ano, no mês de início.
   ativa: 0 | 1
 }
+
+export type FormaConta = 'cartao' | 'boleto' | 'pix' | 'debito' | 'dinheiro'
 
 /** Mudança que vale só para um mês de uma conta fixa. */
 export interface AjusteConta {

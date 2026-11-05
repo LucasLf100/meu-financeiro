@@ -1,5 +1,23 @@
-import { db, type AjusteConta, type ContaFixa, type PagamentoConta } from '../db'
+import { db, type AjusteConta, type ContaFixa, type FormaConta, type PagamentoConta } from '../db'
 import { diaDoMes, hoje, mesesEntre, somarMeses } from '../datas'
+
+export const FORMAS_CONTA: Array<{ valor: FormaConta; rotulo: string; icone: string }> = [
+  { valor: 'cartao', rotulo: 'Cartão', icone: '💳' },
+  { valor: 'boleto', rotulo: 'Boleto', icone: '🧾' },
+  { valor: 'pix', rotulo: 'Pix', icone: '⚡' },
+  { valor: 'debito', rotulo: 'Débito automático', icone: '🏦' },
+  { valor: 'dinheiro', rotulo: 'Dinheiro', icone: '💵' },
+]
+
+/** Por onde a conta é paga. Sem forma escolhida, "cartão" no nome indica cartão. */
+export function formaDaConta(conta: ContaFixa): FormaConta | undefined {
+  if (conta.formaPagamento) return conta.formaPagamento
+  return /cart[aã]o/i.test(conta.nome) ? 'cartao' : undefined
+}
+
+export function infoForma(forma?: FormaConta) {
+  return FORMAS_CONTA.find((f) => f.valor === forma)
+}
 
 export type StatusConta = 'paga' | 'pendente' | 'atrasada'
 
@@ -15,17 +33,34 @@ export interface OcorrenciaConta {
   valorEstimado: boolean
 }
 
-/** Número da parcela da conta naquele mês (contas com fim definido, ex.: financiamento). */
-export function numeroParcela(conta: ContaFixa, mes: string): number {
-  return (conta.parcelaInicial ?? 1) + mesesEntre(conta.inicio, mes)
+/** A cada quantos meses a conta se repete: 1 (mensal) ou 12 (anual). */
+export function intervaloMeses(conta: ContaFixa): number {
+  return conta.frequencia === 'anual' ? 12 : 1
 }
 
-export function contaValeNoMes(conta: ContaFixa, mes: string): boolean {
+/** Número da parcela da conta naquele mês (contas com fim definido, ex.: financiamento). */
+export function numeroParcela(conta: ContaFixa, mes: string): number {
+  return (conta.parcelaInicial ?? 1) + Math.floor(mesesEntre(conta.inicio, mes) / intervaloMeses(conta))
+}
+
+/** A conta ainda está em vigor neste mês (começou e não terminou), mesmo que não vença nele. */
+export function contaEmVigor(conta: ContaFixa, mes: string): boolean {
   if (!conta.ativa) return false
   if (mes < conta.inicio) return false
   if (conta.fim && mes > conta.fim) return false
   if (conta.totalParcelas && numeroParcela(conta, mes) > conta.totalParcelas) return false
   return true
+}
+
+/** A conta vence neste mês (mensal: todo mês; anual: só no mês do ano em que começou). */
+export function contaValeNoMes(conta: ContaFixa, mes: string): boolean {
+  if (!contaEmVigor(conta, mes)) return false
+  return mesesEntre(conta.inicio, mes) % intervaloMeses(conta) === 0
+}
+
+/** Valor médio por mês (anual dividido por 12). */
+export function valorPorMes(conta: ContaFixa): number {
+  return conta.frequencia === 'anual' ? Math.round(conta.valor / 12) : conta.valor
 }
 
 /** Todas as contas fixas de um mês, com valor, vencimento e status. */
@@ -93,6 +128,8 @@ export interface MudancasConta {
   categoriaId?: number
   valorVariavel: boolean
   totalParcelas?: number
+  formaPagamento?: FormaConta
+  frequencia?: 'mensal' | 'anual'
 }
 
 /**
@@ -107,7 +144,7 @@ export async function editarConta(conta: ContaFixa & { id: number }, mes: string
     const ajuste: AjusteConta = { ...existente, contaId: conta.id, competencia: mes, valor: mudancas.valor, diaVencimento: mudancas.diaVencimento }
     await db.ajustesConta.put(ajuste)
     // Nome e categoria não mudam "só neste mês": valem para a conta toda.
-    await db.contas.update(conta.id, { nome: mudancas.nome, categoriaId: mudancas.categoriaId })
+    await db.contas.update(conta.id, { nome: mudancas.nome, categoriaId: mudancas.categoriaId, formaPagamento: mudancas.formaPagamento })
     return
   }
 

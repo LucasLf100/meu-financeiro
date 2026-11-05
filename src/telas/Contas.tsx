@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type ContaFixa } from '../db'
+import { db, type ContaFixa, type FormaConta } from '../db'
 import { formatarReais, lerValor } from '../dinheiro'
-import { formatarDia, formatarDiaCurto, hoje, mesAtual, nomeMes, prazo, somarMeses } from '../datas'
-import { apagarConta, contaValeNoMes, editarConta, encerrarConta, ocorrenciasDoMes, type ModoEdicao, type OcorrenciaConta } from '../regras/contas'
+import { formatarDia, formatarDiaCurto, hoje, mesAtual, MESES, nomeMes, prazo, somarMeses } from '../datas'
+import { apagarConta, contaEmVigor, contaValeNoMes, valorPorMes, editarConta, FORMAS_CONTA, formaDaConta, infoForma, encerrarConta, ocorrenciasDoMes, type ModoEdicao, type OcorrenciaConta } from '../regras/contas'
 import { BarraProgresso, Campo, Etiqueta, Folha, Interruptor, Opcoes, SeletorMes, Vazio, valorParaTexto, mascararValor } from '../componentes/ui'
 import { SeletorCategoria } from '../componentes/SeletorCategoria'
 import { empresaNoBolso } from '../regras/empresa'
@@ -56,6 +56,7 @@ export function Contas() {
               <span className="item-texto">
                 <strong>{o.conta.nome}</strong>
                 <small>
+                  {infoForma(formaDaConta(o.conta)) ? `${infoForma(formaDaConta(o.conta))!.icone} ` : ''}
                   {o.parcela ? `Parcela ${o.parcela.numero} de ${o.parcela.total} · ` : ''}
                   {o.status === 'paga' ? `Paga em ${formatarDiaCurto(o.pagamento!.pagoEm)}` : `Vence ${formatarDiaCurto(o.vencimento)}`}
                 </small>
@@ -92,11 +93,11 @@ function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: 
     const lista: ContaResumo[] = []
     for (const conta of contas) {
       const aPartirDe = conta.inicio > atual ? conta.inicio : atual
-      if (!contaValeNoMes(conta, aPartirDe)) continue // encerrada ou já quitada
+      if (!contaEmVigor(conta, aPartirDe)) continue // encerrada ou já quitada
       let restantes: number | undefined
       if (conta.totalParcelas) {
         restantes = 0
-        for (let m = aPartirDe; restantes < 600 && contaValeNoMes(conta, m); m = somarMeses(m, 1)) restantes++
+        for (let m = aPartirDe, passos = 0; passos < 1200 && contaEmVigor(conta, m); m = somarMeses(m, 1), passos++) if (contaValeNoMes(conta, m)) restantes++
       }
       lista.push({ conta: conta as ContaFixa & { id: number }, aPartirDe, restantes })
     }
@@ -112,13 +113,16 @@ function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: 
 
   const recorrentes = lista.filter((c) => c.restantes === undefined)
   const parceladas = lista.filter((c) => c.restantes !== undefined)
-  const soma = (l: ContaResumo[]) => l.reduce((s, c) => s + c.conta.valor, 0)
+  const soma = (l: ContaResumo[]) => l.reduce((s, c) => s + valorPorMes(c.conta), 0)
   const faltaParceladas = parceladas.reduce((s, c) => s + c.conta.valor * (c.restantes ?? 0), 0)
 
   const linha = (c: ContaResumo) => {
     const cat = categorias.find((x) => x.id === c.conta.categoriaId)
+    const forma = infoForma(formaDaConta(c.conta))
     const detalhe = [
+      forma ? `${forma.icone} ${forma.rotulo}` : null,
       `dia ${c.conta.diaVencimento}`,
+      c.conta.frequencia === 'anual' ? `anual, em ${MESES[Number(c.conta.inicio.slice(5, 7)) - 1]} · ~${formatarReais(valorPorMes(c.conta))}/mês` : null,
       c.restantes !== undefined ? `faltam ${c.restantes} de ${c.conta.totalParcelas}` : c.conta.valorVariavel ? 'valor varia' : null,
       c.aPartirDe > atual ? `começa em ${nomeMes(c.aPartirDe)}` : null,
     ].filter(Boolean).join(' · ')
@@ -129,7 +133,7 @@ function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: 
           <strong>{c.conta.nome}</strong>
           <small>{detalhe}</small>
         </span>
-        <strong className="item-valor">{c.conta.valorVariavel ? '~' : ''}{formatarReais(c.conta.valor)}</strong>
+        <strong className="item-valor">{c.conta.valorVariavel ? '~' : ''}{formatarReais(c.conta.valor)}{c.conta.frequencia === 'anual' ? '/ano' : ''}</strong>
       </button>
     )
   }
@@ -282,6 +286,9 @@ function FormConta({
   const [totalParcelas, setTotalParcelas] = useState(String(conta?.totalParcelas ?? 12))
   const [parcelaAtual, setParcelaAtual] = useState(String(ocorrencia?.parcela?.numero ?? 1))
   const [modo, setModo] = useState<ModoEdicao>('este-e-proximos')
+  const [forma, setForma] = useState<FormaConta | ''>(conta ? formaDaConta(conta) ?? '' : '')
+  const [frequencia, setFrequencia] = useState<'mensal' | 'anual'>(conta?.frequencia ?? 'mensal')
+  const [mesAnual, setMesAnual] = useState(mes)
   const [erro, setErro] = useState('')
 
   async function salvar() {
@@ -293,11 +300,11 @@ function FormConta({
     const atual = temFim ? Number(parcelaAtual) : 1
     if (temFim && (!total || total < 1 || !atual || atual < 1 || atual > total)) return setErro('Confira o número de parcelas.')
 
-    const mudancas = { nome: nome.trim(), valor, diaVencimento: dia, categoriaId, valorVariavel: variavel, totalParcelas: total }
+    const mudancas = { nome: nome.trim(), valor, diaVencimento: dia, categoriaId, valorVariavel: variavel, totalParcelas: total, formaPagamento: forma || undefined, frequencia: frequencia === 'anual' ? ('anual' as const) : undefined }
     if (conta) {
       await editarConta(conta, mes, modo, mudancas)
     } else {
-      await db.contas.add({ ...mudancas, inicio: mes, parcelaInicial: temFim ? atual : undefined, ativa: 1 })
+      await db.contas.add({ ...mudancas, inicio: frequencia === 'anual' ? mesAnual : mes, parcelaInicial: temFim ? atual : undefined, ativa: 1 })
     }
     aoFechar()
   }
@@ -315,7 +322,23 @@ function FormConta({
           <input type="number" inputMode="numeric" min={1} max={31} value={dia} onChange={(e) => setDia(Number(e.target.value))} />
         </Campo>
       </div>
-      <Interruptor rotulo="O valor muda todo mês" dica="Luz, água… o app usa a média dos últimos 3 meses." ligado={variavel} aoMudar={setVariavel} />
+      <Campo rotulo="Repete">
+        <Opcoes
+          rotulo="Repete"
+          opcoes={[{ valor: 'mensal' as const, rotulo: 'Todo mês' }, { valor: 'anual' as const, rotulo: 'Todo ano' }]}
+          valor={frequencia}
+          aoMudar={setFrequencia}
+        />
+      </Campo>
+      {frequencia === 'anual' && !conta && (
+        <Campo rotulo="Primeiro vencimento (mês e ano)" dica="Depois se repete todo ano neste mesmo mês. Ex.: IPVA, seguro, domínio.">
+          <input type="month" value={mesAnual} onChange={(e) => e.target.value && setMesAnual(e.target.value)} />
+        </Campo>
+      )}
+      {frequencia === 'anual' && conta && (
+        <small className="dica">Vence todo ano em {MESES[Number(conta.inicio.slice(5, 7)) - 1]}.</small>
+      )}
+      <Interruptor rotulo={frequencia === 'anual' ? 'O valor muda a cada ano' : 'O valor muda todo mês'} dica="O app usa a média dos últimos 3 pagamentos." ligado={variavel} aoMudar={setVariavel} />
       <Interruptor rotulo="Tem número de parcelas" dica="Financiamento, empréstimo, curso…" ligado={temFim} aoMudar={setTemFim} />
       {temFim && (
         <div className="linha-campos">
@@ -329,6 +352,15 @@ function FormConta({
           )}
         </div>
       )}
+      <Campo rotulo="Como você paga">
+        <Opcoes
+          rotulo="Como você paga"
+          opcoes={FORMAS_CONTA.map((f) => ({ valor: f.valor as FormaConta | '', rotulo: `${f.icone} ${f.rotulo}` }))}
+          valor={forma}
+          aoMudar={(v) => setForma(v === forma ? '' : v)}
+        />
+      </Campo>
+
       <Campo rotulo="Categoria">
         <SeletorCategoria modo="pessoal" valor={categoriaId} aoMudar={setCategoriaId} />
       </Campo>
