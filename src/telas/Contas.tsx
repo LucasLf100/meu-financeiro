@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type ContaFixa, type FormaConta } from '../db'
 import { formatarReais, lerValor } from '../dinheiro'
@@ -10,7 +10,21 @@ import { empresaNoBolso } from '../regras/empresa'
 
 export function Contas() {
   const [mes, setMes] = useState(mesAtual())
+  const [mesEscolhido, setMesEscolhido] = useState(false)
   const [aberta, setAberta] = useState<OcorrenciaConta | null>(null)
+  const primeiroMesComContas = useLiveQuery(async () => {
+    for (let m = mesAtual(), i = 0; i < 13; m = somarMeses(m, 1), i++) {
+      if ((await ocorrenciasDoMes(m)).length) return m
+    }
+    return mesAtual()
+  }, [])
+  useEffect(() => {
+    if (!mesEscolhido && primeiroMesComContas && primeiroMesComContas !== mes) setMes(primeiroMesComContas)
+  }, [primeiroMesComContas, mesEscolhido, mes])
+  const mudarMes = (m: string) => {
+    setMesEscolhido(true)
+    setMes(m)
+  }
   const [nova, setNova] = useState(false)
   const [editando, setEditando] = useState<{ conta: ContaFixa & { id: number }; mes: string } | null>(null)
   const ocorrencias = useLiveQuery(() => ocorrenciasDoMes(mes), [mes])
@@ -23,10 +37,16 @@ export function Contas() {
 
   return (
     <div className="tela">
-      <TodasAsContas aoEditar={setEditando} />
+      <TodasAsContas
+        aoAbrir={async ({ conta, mes: mesDaConta }) => {
+          const ocorrencia = (await ocorrenciasDoMes(mesDaConta)).find((o) => o.conta.id === conta.id)
+          if (ocorrencia) setAberta(ocorrencia)
+          else setEditando({ conta, mes: mesDaConta })
+        }}
+      />
 
       <h3 className="titulo-secao">Mês a mês</h3>
-      <SeletorMes mes={mes} aoMudar={setMes} />
+      <SeletorMes mes={mes} aoMudar={mudarMes} />
 
       <section className="bloco">
         <div className="linha-resumo">
@@ -85,8 +105,14 @@ interface ContaResumo {
   restantes?: number // parcelas que faltam, contando a deste mês
 }
 
+/** Primeiro mês, a partir de `desde`, em que a conta vence. */
+function proximoVencimento(conta: ContaFixa, desde: string): string {
+  for (let m = desde, i = 0; i < 24; m = somarMeses(m, 1), i++) if (contaValeNoMes(conta, m)) return m
+  return desde
+}
+
 /** Visão geral: todas as contas fixas em vigor, com o total por mês. */
-function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: number }; mes: string }) => void }) {
+function TodasAsContas({ aoAbrir }: { aoAbrir: (e: { conta: ContaFixa & { id: number }; mes: string }) => void }) {
   const dados = useLiveQuery(async () => {
     const [contas, categorias, empresa] = await Promise.all([db.contas.toArray(), db.categorias.toArray(), empresaNoBolso()])
     const atual = mesAtual()
@@ -127,7 +153,7 @@ function TodasAsContas({ aoEditar }: { aoEditar: (e: { conta: ContaFixa & { id: 
       c.aPartirDe > atual ? `começa em ${nomeMes(c.aPartirDe)}` : null,
     ].filter(Boolean).join(' · ')
     return (
-      <button key={c.conta.id} className="item" onClick={() => aoEditar({ conta: c.conta, mes: c.aPartirDe })}>
+      <button key={c.conta.id} className="item" onClick={() => aoAbrir({ conta: c.conta, mes: proximoVencimento(c.conta, c.aPartirDe) })}>
         <span className="item-icone" style={{ background: `${cat?.cor ?? '#94a3b8'}22` }}>{cat?.icone ?? '📄'}</span>
         <span className="item-texto">
           <strong>{c.conta.nome}</strong>
@@ -194,7 +220,7 @@ export function EtiquetaStatus({ status }: { status: OcorrenciaConta['status'] }
   return <Etiqueta tipo="neutra">Pendente</Etiqueta>
 }
 
-function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaConta; aoFechar: () => void }) {
+export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaConta; aoFechar: () => void }) {
   const { conta, competencia, pagamento } = ocorrencia
   const [textoValor, setTextoValor] = useState(valorParaTexto(ocorrencia.valor))
   const [data, setData] = useState(hoje())

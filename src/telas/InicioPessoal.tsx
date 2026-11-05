@@ -3,7 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { formatarReais } from '../dinheiro'
 import { formatarDiaCurto, mesAtual, MESES, nomeMesCurto, prazo } from '../datas'
 import { resumoPessoal, type Compromisso, type ResumoPessoal } from '../regras/resumo'
-import { formaDaConta, infoForma } from '../regras/contas'
+import { formaDaConta, infoForma, type OcorrenciaConta } from '../regras/contas'
+import { AcoesConta } from './Contas'
 import { AvisoBackup } from '../componentes/AvisoBackup'
 import { BarraProgresso, Etiqueta, Folha } from '../componentes/ui'
 import type { Aba } from '../componentes/BarraInferior'
@@ -228,6 +229,7 @@ function ListaCompromissos({ itens, aoIrPara }: { itens: Compromisso[]; aoIrPara
 
 /** Todas as contas fixas do mês (recorrentes e parcelas), com o ícone de por onde cada uma é paga. */
 function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; aoVer: () => void }) {
+  const [aberta, setAberta] = useState<OcorrenciaConta | null>(null)
   const { mes: mesDasContas, itens } = contas
   const total = itens.reduce((s, o) => s + o.valor, 0)
   const pago = itens.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0)
@@ -263,7 +265,7 @@ function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; 
               .map((o) => {
                 const forma = infoForma(formaDaConta(o.conta))
                 return (
-                  <button key={o.conta.id} className="item" onClick={aoVer}>
+                  <button key={o.conta.id} className="item" onClick={() => setAberta(o)}>
                     <span className="item-icone" title={forma?.rotulo ?? 'Forma de pagamento não informada'}>{forma?.icone ?? '📄'}</span>
                     <span className="item-texto">
                       <strong>{o.conta.nome.replace(/ · cart[aã]o .*$/i, '')}</strong>
@@ -280,8 +282,10 @@ function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; 
                 )
               })}
           </div>
+          <small className="texto-suave">Toque numa conta para marcar como paga.</small>
         </>
       )}
+      {aberta && <AcoesConta ocorrencia={aberta} aoFechar={() => setAberta(null)} />}
     </section>
   )
 }
