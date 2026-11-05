@@ -4,9 +4,10 @@ interface Props {
   modo: Modo
   aoTrocarModo: (modo: Modo) => void
   aoAbrirAjustes: () => void
+  aoAbrirBusca: () => void
 }
 
-export function Cabecalho({ modo, aoTrocarModo, aoAbrirAjustes }: Props) {
+export function Cabecalho({ modo, aoTrocarModo, aoAbrirAjustes, aoAbrirBusca }: Props) {
   return (
     <header className="cabecalho">
       <div className="seletor-modo" role="tablist" aria-label="Modo do app">
@@ -17,6 +18,12 @@ export function Cabecalho({ modo, aoTrocarModo, aoAbrirAjustes }: Props) {
           Empresa
         </button>
       </div>
+      <button className="botao-icone" onClick={aoAbrirBusca} aria-label="Buscar">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3.5-3.5" />
+        </svg>
+      </button>
       <button className="botao-icone" onClick={aoAbrirAjustes} aria-label="Ajustes">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="3" />

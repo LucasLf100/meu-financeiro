@@ -475,6 +475,12 @@ button.item:active { background: var(--superficie-2); }
 .grafico-coluna.atual .grafico-barra { background: var(--destaque); }
 .grafico-coluna.atual span { color: var(--texto); font-weight: 700; }
 
+/* Busca */
+.campo-busca { flex: 1; min-width: 0; padding: 11px 14px; border: 1px solid var(--borda); border-radius: 999px; background: var(--superficie); color: var(--texto); font: inherit; font-size: 1rem; }
+.campo-busca:focus { outline: 2px solid var(--destaque); outline-offset: 1px; }
+.centro { padding: 32px 12px; text-align: center; }
+.cabecalho .botao-icone + .botao-icone { margin-left: -8px; }
+
 /* Selo e abertura */
 .selo { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--texto-suave); }
 .selo span { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: lowercase; }

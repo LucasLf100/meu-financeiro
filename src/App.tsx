@@ -16,6 +16,7 @@ import { Retiradas } from './telas/empresa/Retiradas'
 import { FormGastoEmpresa } from './telas/empresa/Formularios'
 import { Ajustes } from './telas/Ajustes'
 import { Relatorios } from './telas/Relatorios'
+import { Busca } from './telas/Busca'
 
 const CHAVE_MODO = 'mf-modo'
 
@@ -25,6 +26,7 @@ export default function App() {
   const [ajustesAberto, setAjustesAberto] = useState(false)
   const [novoAberto, setNovoAberto] = useState(false)
   const [relatoriosAberto, setRelatoriosAberto] = useState(false)
+  const [buscaAberta, setBuscaAberta] = useState(false)
   const [ladoContas, setLadoContas] = useState<'pagar' | 'receber'>('pagar')
 
   useEffect(() => {
@@ -45,12 +47,13 @@ export default function App() {
 
   if (ajustesAberto) return <Ajustes aoVoltar={() => setAjustesAberto(false)} />
   if (relatoriosAberto) return <Relatorios aoVoltar={() => setRelatoriosAberto(false)} />
+  if (buscaAberta) return <Busca aoVoltar={() => setBuscaAberta(false)} />
 
   const abrirAjustes = () => setAjustesAberto(true)
 
   return (
     <div className="app">
-      <Cabecalho modo={modo} aoTrocarModo={trocarModo} aoAbrirAjustes={abrirAjustes} />
+      <Cabecalho modo={modo} aoTrocarModo={trocarModo} aoAbrirAjustes={abrirAjustes} aoAbrirBusca={() => setBuscaAberta(true)} />
       <main className="conteudo">
         {modo === 'pessoal' && aba === 'inicio' && (
           <InicioPessoal
