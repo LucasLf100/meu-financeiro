@@ -5,6 +5,7 @@ import { exportarBackup, lerBackup, restaurarBackup, contarRegistros, type Arqui
 import { lerValor } from '../dinheiro'
 import { Categorias } from './Categorias'
 import { Produtos } from './Produtos'
+import { adicionarBackup, contarParaAdicionar } from '../importar'
 import { SeloValtaris } from '../componentes/Selo'
 import { Interruptor, Opcoes, mascararValor } from '../componentes/ui'
 import { lerTema, salvarTema, type Tema } from '../tema'
@@ -66,6 +67,7 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
   const [persistente, setPersistente] = useState<boolean | null>(null)
   const [mensagem, setMensagem] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null)
   const [pendente, setPendente] = useState<ArquivoBackup | null>(null)
+  const [modoArquivo, setModoArquivo] = useState<'adicionar' | 'substituir'>('adicionar')
   const entradaArquivo = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -107,6 +109,21 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
     }
   }
 
+  async function confirmarAdicao() {
+    if (!pendente) return
+    try {
+      const { adicionados, ignorados } = await adicionarBackup(pendente)
+      const partes = [
+        adicionados === 0 ? 'Nada novo para adicionar: tudo do arquivo já estava no app.' : adicionados === 1 ? '1 registro adicionado.' : `${adicionados} registros adicionados.`,
+        adicionados > 0 && ignorados > 0 ? (ignorados === 1 ? '1 já existia e foi ignorado.' : `${ignorados} já existiam e foram ignorados.`) : '',
+      ]
+      setMensagem({ tipo: 'ok', texto: partes.filter(Boolean).join(' ') })
+    } catch {
+      setMensagem({ tipo: 'erro', texto: 'Não foi possível adicionar. Seus dados atuais não foram alterados.' })
+    }
+    setPendente(null)
+  }
+
   async function confirmarRestauracao() {
     if (!pendente) return
     try {
@@ -141,8 +158,13 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
             </p>
             <p className="linha-info">Último backup: <strong>{formatarData(ultimoBackup)}</strong></p>
             <button className="botao botao-principal" onClick={exportar}>Salvar backup</button>
-            <button className="botao" onClick={() => entradaArquivo.current?.click()}>Restaurar de um arquivo</button>
+            <button className="botao" onClick={() => { setModoArquivo('adicionar'); entradaArquivo.current?.click() }}>Adicionar de um arquivo</button>
+            <button className="botao" onClick={() => { setModoArquivo('substituir'); entradaArquivo.current?.click() }}>Restaurar de um arquivo</button>
             <input ref={entradaArquivo} type="file" accept="application/json,.json" hidden onChange={escolherArquivo} />
+            <p className="texto-suave">
+              <strong>Adicionar</strong> soma o arquivo ao que já está no app e ignora o que for repetido.{' '}
+              <strong>Restaurar</strong> apaga tudo e deixa só o que está no arquivo.
+            </p>
           </section>
 
           <section className="bloco">
@@ -201,7 +223,22 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
         </div>
       </main>
 
-      {pendente && (
+      {pendente && modoArquivo === 'adicionar' && (
+        <div className="fundo-folha" onClick={() => setPendente(null)}>
+          <div className="folha" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Confirmar adição">
+            <div className="folha-alca" />
+            <h2>Adicionar ao app?</h2>
+            <p>
+              Arquivo de <strong>{formatarData(pendente.exportadoEm)}</strong>, com <strong>{contarParaAdicionar(pendente)}</strong> registros.
+            </p>
+            <p className="texto-suave">Nada do que já está no app é apagado. O que já existir (mesmo nome, mesma data e valor) é ignorado.</p>
+            <button className="botao botao-principal" onClick={confirmarAdicao}>Adicionar</button>
+            <button className="botao" onClick={() => setPendente(null)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {pendente && modoArquivo === 'substituir' && (
         <div className="fundo-folha" onClick={() => setPendente(null)}>
           <div className="folha" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Confirmar restauração">
             <div className="folha-alca" />
