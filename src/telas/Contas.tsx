@@ -400,6 +400,7 @@ function FormConta({
   const [cartaoId, setCartaoId] = useState<number | undefined>(conta?.cartaoId)
   const cartaoEscolhido = cartaoId ?? cartoes[0]?.id
   const [mesAnual, setMesAnual] = useState(mes)
+  const [mesBase, setMesBase] = useState(mes)
   const [erro, setErro] = useState('')
 
   async function salvar() {
@@ -413,7 +414,7 @@ function FormConta({
 
     const mudancas = { nome: nome.trim(), valor, diaVencimento: dia, categoriaId, valorVariavel: variavel, totalParcelas: total, formaPagamento: forma || undefined, cartaoId: forma === 'cartao' ? cartaoEscolhido : undefined, frequencia: frequencia === 'anual' ? ('anual' as const) : undefined }
     if (conta) {
-      await editarConta(conta, mes, modo, mudancas)
+      await editarConta(conta, mesBase, modo, mudancas)
     } else {
       await db.contas.add({ ...mudancas, inicio: frequencia === 'anual' ? mesAnual : mes, parcelaInicial: temFim ? atual : undefined, ativa: 1 })
     }
@@ -498,10 +499,18 @@ function FormConta({
             aoMudar={setModo}
           />
           <small className="dica">
-            {modo === 'so-este' && `Valor e dia mudam só em ${nomeMes(mes)}.`}
-            {modo === 'este-e-proximos' && `Vale a partir de ${nomeMes(mes)}. Os meses anteriores ficam como estavam.`}
-            {modo === 'futuros' && `${nomeMes(mes)} fica como está; muda a partir do mês seguinte.`}
+            {modo === 'so-este' && `Valor e dia mudam só em ${nomeMes(mesBase)}.`}
+            {modo === 'este-e-proximos' && `Vale a partir de ${nomeMes(mesBase)}. Os meses anteriores ficam como estavam.`}
+            {modo === 'futuros' && `${nomeMes(mesBase)} fica como está; muda a partir do mês seguinte.`}
           </small>
+        </Campo>
+      )}
+      {conta && (
+        <Campo
+          rotulo={modo === 'so-este' ? 'Qual mês' : 'A partir de'}
+          dica={modo === 'este-e-proximos' && mesBase < conta.inicio ? `A conta passa a começar em ${nomeMes(mesBase)} (antes começava em ${nomeMes(conta.inicio)}).` : undefined}
+        >
+          <input type="month" value={mesBase} onChange={(e) => e.target.value && setMesBase(e.target.value)} />
         </Campo>
       )}
 

@@ -153,7 +153,20 @@ export async function editarConta(conta: ContaFixa & { id: number }, mes: string
   const aPartirDe = modo === 'futuros' ? somarMeses(mes, 1) : mes
   await db.transaction('rw', db.contas, db.pagamentosConta, db.ajustesConta, async () => {
     if (aPartirDe <= conta.inicio) {
-      await db.contas.update(conta.id, { ...mudancas })
+      // Pode também ADIANTAR o início (ex.: a conta começava em janeiro e passa a valer desde dezembro).
+      const adiantar: Partial<ContaFixa> = {}
+      if (aPartirDe < conta.inicio) {
+        if (conta.totalParcelas) {
+          // Parcelada: a parcela do novo início é anterior (só se não ficar abaixo de 1).
+          const recuo = Math.floor(mesesEntre(aPartirDe, conta.inicio) / intervaloMeses(conta))
+          const parcela = (conta.parcelaInicial ?? 1) - recuo
+          if (parcela >= 1) Object.assign(adiantar, { inicio: aPartirDe, parcelaInicial: parcela })
+        } else {
+          adiantar.inicio = aPartirDe
+        }
+      }
+      await db.contas.update(conta.id, { ...mudancas, ...adiantar })
+      // Desfaz ajustes (inclusive "não tem neste mês") daqui para frente.
       await db.ajustesConta.where('contaId').equals(conta.id).filter((a) => a.competencia >= aPartirDe).delete()
       return
     }
