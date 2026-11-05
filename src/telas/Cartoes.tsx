@@ -53,9 +53,9 @@ const ROTULO_STATUS: Record<StatusFatura, [string, 'ok' | 'alerta' | 'perigo' | 
   paga: ['Paga', 'ok'],
 }
 
-function DetalheCartao({ cartao: inicial, aoFechar }: { cartao: Cartao; aoFechar: () => void }) {
+export function DetalheCartao({ cartao: inicial, aoFechar, faturaInicial }: { cartao: Cartao; aoFechar: () => void; faturaInicial?: string }) {
   const cartao = useLiveQuery(() => db.cartoes.get(inicial.id!), [inicial.id], inicial) ?? inicial
-  const [fatura, setFatura] = useState(faturaAberta(inicial))
+  const [fatura, setFatura] = useState(faturaInicial ?? faturaAberta(inicial))
   const [editando, setEditando] = useState(false)
 
   const dados = useLiveQuery(async () => {

@@ -1,7 +1,7 @@
 import { db, type Cartao } from '../db'
 import { diasAte, mesAtual, mesDe, somarMeses } from '../datas'
 import { atrasadasAnteriores, contaEmVigor, contaValeNoMes, ocorrenciasDoMes, type OcorrenciaConta } from './contas'
-import { limiteUsado, listarFaturas } from './cartoes'
+import { faturasDoMes, limiteUsado, listarFaturas, type FaturaDoMes } from './cartoes'
 import { empresaNoBolso, reembolsosPendentes } from './empresa'
 import { recebimentosDoMes } from './recebimentos'
 import { calcularMes } from './relatorio'
@@ -43,7 +43,7 @@ export interface ResumoPessoal {
   entradasRecebidas: number
   sobraPrevista: number
   /** Todas as contas fixas de um mês (o atual; se não houver nenhuma, o próximo). */
-  contasDoMes: { mes: string; itens: OcorrenciaConta[] }
+  contasDoMes: { mes: string; itens: OcorrenciaConta[]; faturas: FaturaDoMes[] }
   /** Tudo o que sai no mês: o que já foi pago e o que falta pagar. */
   saidas: { total: number; pago: number; falta: number; contasFixas: number; parcelasECartao: number; gastosAvulsos: number; empresa: number }
 }
@@ -198,6 +198,16 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     entradasRecebidas,
     sobraPrevista,
     saidas,
-    contasDoMes: contasMes.length ? { mes, itens: contasMes } : { mes: somarMeses(mes, 1), itens: await ocorrenciasDoMes(somarMeses(mes, 1)) },
+    contasDoMes: await (async () => {
+      // O mês atual enquanto tiver algo a pagar; se já estiver tudo pago (ou vazio), mostra o próximo.
+      const faturasAgora = await faturasDoMes(mes)
+      const temAPagar = contasMes.some((o) => o.status !== 'paga') || faturasAgora.some((f) => f.status !== 'paga')
+      if (temAPagar) return { mes, itens: contasMes, faturas: faturasAgora }
+      const proximo = somarMeses(mes, 1)
+      const itensProximo = await ocorrenciasDoMes(proximo)
+      const faturasProximo = await faturasDoMes(proximo)
+      if (!itensProximo.length && !faturasProximo.length) return { mes, itens: contasMes, faturas: faturasAgora }
+      return { mes: proximo, itens: itensProximo, faturas: faturasProximo }
+    })(),
   }
 }

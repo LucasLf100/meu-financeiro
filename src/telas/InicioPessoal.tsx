@@ -5,6 +5,8 @@ import { formatarDiaCurto, mesAtual, MESES, nomeMesCurto, prazo } from '../datas
 import { resumoPessoal, type Compromisso, type ResumoPessoal } from '../regras/resumo'
 import { formaDaConta, infoForma, type OcorrenciaConta } from '../regras/contas'
 import { AcoesConta, EtiquetaStatus, MarcaPagamento } from './Contas'
+import { DetalheCartao } from './Cartoes'
+import type { FaturaDoMes } from '../regras/cartoes'
 import { AvisoBackup } from '../componentes/AvisoBackup'
 import { BarraProgresso, Folha } from '../componentes/ui'
 import type { Aba } from '../componentes/BarraInferior'
@@ -230,23 +232,25 @@ function ListaCompromissos({ itens, aoIrPara }: { itens: Compromisso[]; aoIrPara
 /** Todas as contas fixas do mês (recorrentes e parcelas), com o ícone de por onde cada uma é paga. */
 function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; aoVer: () => void }) {
   const [aberta, setAberta] = useState<OcorrenciaConta | null>(null)
-  const { mes: mesDasContas, itens } = contas
-  const total = itens.reduce((s, o) => s + o.valor, 0)
-  const pago = itens.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0)
-  const atrasadas = itens.filter((o) => o.status === 'atrasada').length
+  const [faturaAberta, setFaturaAberta] = useState<FaturaDoMes | null>(null)
+  const { mes: mesDasContas, itens, faturas } = contas
+  const total = itens.reduce((s, o) => s + o.valor, 0) + faturas.reduce((s, f) => s + f.valor, 0)
+  const pago = itens.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0) + faturas.filter((f) => f.status === 'paga').reduce((s, f) => s + f.valor, 0)
+  const atrasadas = itens.filter((o) => o.status === 'atrasada').length + faturas.filter((f) => f.status === 'atrasada').length
+  const vazio = itens.length === 0 && faturas.length === 0
   const outroMes = mesDasContas !== mesAtual()
 
   return (
     <section className="bloco">
       <div className="linha-resumo">
-        <h2>Contas fixas de {MESES[Number(mesDasContas.slice(5, 7)) - 1]}</h2>
-        <button className="botao-link" onClick={aoVer}>{itens.length ? 'Ver' : 'Cadastrar'}</button>
+        <h2>A pagar em {MESES[Number(mesDasContas.slice(5, 7)) - 1]}</h2>
+        <button className="botao-link" onClick={aoVer}>{vazio ? 'Cadastrar' : 'Ver'}</button>
       </div>
-      {itens.length === 0 ? (
+      {vazio ? (
         <p className="texto-suave">Luz, água, telefone, parcelas do carro… cadastre na aba Contas o que você paga todo mês.</p>
       ) : (
         <>
-          {outroMes && <small className="texto-suave">Nenhuma conta neste mês. Mostrando o próximo.</small>}
+          {outroMes && <small className="texto-suave">Este mês já está todo pago. Mostrando o próximo.</small>}
           <div className="linha-resumo">
             <span>Total</span>
             <strong>{formatarReais(total)}</strong>
@@ -260,6 +264,19 @@ function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; 
             </small>
           </div>
           <div className="lista">
+            {faturas.map((f) => (
+              <button key={`fatura-${f.cartao.id}`} className="item" onClick={() => setFaturaAberta(f)}>
+                <span className="item-icone">💳<MarcaPagamento status={f.status === 'paga' ? 'paga' : 'pendente'} /></span>
+                <span className="item-texto">
+                  <strong>Fatura {f.cartao.nome}</strong>
+                  <small>dia {Number(f.vencimento.slice(8, 10))} · compras e parcelas</small>
+                </span>
+                <span className="item-direita">
+                  <strong className="item-valor">{formatarReais(f.valor)}</strong>
+                  <EtiquetaStatus status={f.status === 'paga' ? 'paga' : f.status === 'atrasada' ? 'atrasada' : 'pendente'} />
+                </span>
+              </button>
+            ))}
             {[...itens]
               .sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor)
               .map((o) => {
@@ -282,10 +299,11 @@ function ContasDoMes({ contas, aoVer }: { contas: ResumoPessoal['contasDoMes']; 
                 )
               })}
           </div>
-          <small className="texto-suave">Toque numa conta para marcar como paga.</small>
+          <small className="texto-suave">Toque numa conta para marcar como paga, ou na fatura para ver as compras e pagar.</small>
         </>
       )}
       {aberta && <AcoesConta ocorrencia={aberta} aoFechar={() => setAberta(null)} />}
+      {faturaAberta && <DetalheCartao cartao={faturaAberta.cartao} faturaInicial={faturaAberta.fatura} aoFechar={() => setFaturaAberta(null)} />}
     </section>
   )
 }

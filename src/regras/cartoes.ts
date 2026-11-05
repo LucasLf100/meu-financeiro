@@ -212,6 +212,44 @@ export async function desfazerPagamentoFatura(cartaoId: number, fatura: string) 
   })
 }
 
+export interface FaturaDoMes {
+  cartao: Cartao & { id: number }
+  fatura: string // mês do vencimento
+  vencimento: string
+  /** Compras e parcelas (as contas fixas do cartão aparecem separadas, na lista de contas). */
+  valor: number
+  status: 'paga' | 'pendente' | 'atrasada'
+}
+
+/** Faturas de cartão que vencem no mês, para aparecerem junto das contas a pagar. */
+export async function faturasDoMes(mes: string): Promise<FaturaDoMes[]> {
+  const [cartoes, parcelas, pagamentos] = await Promise.all([
+    db.cartoes.toArray(),
+    db.parcelas.where({ fatura: mes }).toArray(),
+    db.pagamentosFatura.where({ fatura: mes }).toArray(),
+  ])
+  const dia = hoje()
+  const lista: FaturaDoMes[] = []
+  for (const cartao of cartoes) {
+    const compras = parcelas.filter((p) => p.cartaoId === cartao.id).reduce((s, p) => s + p.valor, 0)
+    const pagamento = pagamentos.find((p) => p.cartaoId === cartao.id)
+    if (!compras && !pagamento) continue
+    // Fatura paga vale pelo valor pago, menos as contas fixas do cartão (que já aparecem na lista de contas).
+    const contasNoCartao = pagamento ? (await contasDoCartao(cartao.id!, mes)).reduce((s, o) => s + o.valor, 0) : 0
+    const valor = pagamento ? Math.max(compras, pagamento.valor - contasNoCartao) : compras
+    if (!valor) continue
+    const { vencimento } = datasDaFatura(cartao, mes)
+    lista.push({
+      cartao: cartao as Cartao & { id: number },
+      fatura: mes,
+      vencimento,
+      valor,
+      status: pagamento ? 'paga' : vencimento < dia ? 'atrasada' : 'pendente',
+    })
+  }
+  return lista
+}
+
 export type StatusFatura = 'aberta' | 'fechada' | 'atrasada' | 'paga'
 
 export function statusFatura(cartao: Cartao, fatura: string, paga: boolean): StatusFatura {

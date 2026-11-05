@@ -46,6 +46,7 @@ export function Gastos() {
       <section className="bloco">
         <span className="rotulo texto-suave">Gastos fora das contas fixas</span>
         <strong className="valor-medio">{formatarReais(total)}</strong>
+        <small className="texto-suave">Os gastos aparecem no mês em que foram feitos. Compras no crédito também entram na fatura do cartão (veja em Contas ou Cartões).</small>
         {top.map(([id, valor]) => {
           const c = categoria(id)
           return (

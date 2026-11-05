@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type ContaFixa, type FormaConta } from '../db'
 import { formatarReais, lerValor } from '../dinheiro'
@@ -7,6 +7,8 @@ import { apagarConta, contaEmVigor, contaValeNoMes, valorPorMes, editarConta, FO
 import { BarraProgresso, Campo, Etiqueta, Folha, Interruptor, Opcoes, SeletorMes, Vazio, valorParaTexto, mascararValor } from '../componentes/ui'
 import { SeletorCategoria } from '../componentes/SeletorCategoria'
 import { empresaNoBolso } from '../regras/empresa'
+import { faturasDoMes, type FaturaDoMes } from '../regras/cartoes'
+import { DetalheCartao } from './Cartoes'
 
 export function Contas() {
   const [mes, setMes] = useState(mesAtual())
@@ -32,13 +34,37 @@ export function Contas() {
   const ocorrencias = useLiveQuery(() => ocorrenciasDoMes(mes), [mes])
   const categorias = useLiveQuery(() => db.categorias.toArray(), [], [])
   const visaoGeral = useLiveQuery(calcularVisaoGeral)
+  const faturas = useLiveQuery(() => faturasDoMes(mes), [mes], [] as FaturaDoMes[])
+  const [faturaAberta, setFaturaAberta] = useState<FaturaDoMes | null>(null)
 
   if (!ocorrencias) return null
-  const total = ocorrencias.reduce((s, o) => s + o.valor, 0)
   const pagas = ocorrencias.filter((o) => o.status === 'paga')
   const aPagar = ocorrencias.filter((o) => o.status !== 'paga').sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor)
-  const pago = pagas.reduce((s, o) => s + o.valor, 0)
-  const atrasadas = aPagar.filter((o) => o.status === 'atrasada').length
+  const faturasAPagar = faturas.filter((f) => f.status !== 'paga')
+  const faturasPagas = faturas.filter((f) => f.status === 'paga')
+  // Total do mês: contas fixas + faturas de cartão (compras e parcelas).
+  const total = ocorrencias.reduce((s, o) => s + o.valor, 0) + faturas.reduce((s, f) => s + f.valor, 0)
+  const pago = pagas.reduce((s, o) => s + o.valor, 0) + faturasPagas.reduce((s, f) => s + f.valor, 0)
+  const atrasadas = aPagar.filter((o) => o.status === 'atrasada').length + faturasAPagar.filter((f) => f.status === 'atrasada').length
+  const qtdAPagar = aPagar.length + faturasAPagar.length
+  const qtdPagas = pagas.length + faturasPagas.length
+
+  const itemFatura = (f: FaturaDoMes) => (
+    <button key={`fatura-${f.cartao.id}`} className="item" onClick={() => setFaturaAberta(f)}>
+      <span className="item-icone">💳<MarcaPagamento status={f.status === 'paga' ? 'paga' : 'pendente'} /></span>
+      <span className="item-texto">
+        <strong>Fatura {f.cartao.nome}</strong>
+        <small>{f.status === 'paga' ? 'Paga' : `Vence ${formatarDiaCurto(f.vencimento)}`} · compras e parcelas</small>
+      </span>
+      <span className="item-direita">
+        <strong className="item-valor">{formatarReais(f.valor)}</strong>
+        <EtiquetaStatus status={f.status === 'paga' ? 'paga' : f.status === 'atrasada' ? 'atrasada' : 'pendente'} />
+      </span>
+    </button>
+  )
+  // Contas e faturas juntas, por vencimento.
+  type Entrada = { vencimento: string; valor: number; no: ReactNode }
+  const ordenar = (lista: Entrada[]) => lista.sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor).map((e) => e.no)
   const doCartaoEmAberto = aPagar.filter((o) => formaDaConta(o.conta) === 'cartao')
 
   async function marcarCartaoComoPagas() {
@@ -96,12 +122,17 @@ export function Contas() {
         )}
       </section>
 
-      {ocorrencias.length === 0 && <Vazio icone="📅" titulo="Nenhuma conta neste mês" texto="Use “+ Nova conta fixa” para cadastrar luz, aluguel, assinaturas, parcelas…" />}
+      {ocorrencias.length === 0 && faturas.length === 0 && <Vazio icone="📅" titulo="Nenhuma conta neste mês" texto="Use “+ Nova conta fixa” para cadastrar luz, aluguel, assinaturas, parcelas…" />}
 
-      {aPagar.length > 0 && (
+      {qtdAPagar > 0 && (
         <section className="grupo">
-          <h3 className="grupo-titulo"><span>A pagar ({aPagar.length})</span><span>{formatarReais(total - pago)}</span></h3>
-          <div className="lista">{aPagar.map(item)}</div>
+          <h3 className="grupo-titulo"><span>A pagar ({qtdAPagar})</span><span>{formatarReais(total - pago)}</span></h3>
+          <div className="lista">
+            {ordenar([
+              ...aPagar.map((o) => ({ vencimento: o.vencimento, valor: o.valor, no: item(o) })),
+              ...faturasAPagar.map((f) => ({ vencimento: f.vencimento, valor: f.valor, no: itemFatura(f) })),
+            ])}
+          </div>
           {doCartaoEmAberto.length > 1 && (
             <button className="botao" onClick={marcarCartaoComoPagas}>
               💳 Marcar as {doCartaoEmAberto.length} do cartão como pagas ({formatarReais(doCartaoEmAberto.reduce((s, o) => s + o.valor, 0))})
@@ -109,15 +140,22 @@ export function Contas() {
           )}
         </section>
       )}
-      {ocorrencias.length > 0 && aPagar.length === 0 && <p className="texto-suave centro">Tudo pago em {nomeMes(mes)}. 🎉</p>}
+      {qtdPagas > 0 && qtdAPagar === 0 && <p className="texto-suave centro">Tudo pago em {nomeMes(mes)}. 🎉</p>}
 
-      {pagas.length > 0 && (
+      {qtdPagas > 0 && (
         <section className="grupo">
           <button className="grupo-titulo grupo-recolhivel" onClick={() => setVerPagas(!verPagas)} aria-expanded={verPagas}>
-            <span>{verPagas ? '▾' : '▸'} Pagas ({pagas.length})</span>
+            <span>{verPagas ? '▾' : '▸'} Pagas ({qtdPagas})</span>
             <span>{formatarReais(pago)}</span>
           </button>
-          {verPagas && <div className="lista">{pagas.map(item)}</div>}
+          {verPagas && (
+            <div className="lista">
+              {ordenar([
+                ...pagas.map((o) => ({ vencimento: o.vencimento, valor: o.valor, no: item(o) })),
+                ...faturasPagas.map((f) => ({ vencimento: f.vencimento, valor: f.valor, no: itemFatura(f) })),
+              ])}
+            </div>
+          )}
         </section>
       )}
 
@@ -142,6 +180,7 @@ export function Contas() {
       )}
 
       {aberta && <AcoesConta ocorrencia={aberta} aoFechar={() => setAberta(null)} />}
+      {faturaAberta && <DetalheCartao cartao={faturaAberta.cartao} faturaInicial={faturaAberta.fatura} aoFechar={() => setFaturaAberta(null)} />}
       {nova && <FormConta mes={mes} aoFechar={() => setNova(false)} />}
       {editando && <FormConta conta={editando.conta} mes={editando.mes} aoFechar={() => setEditando(null)} />}
     </div>
