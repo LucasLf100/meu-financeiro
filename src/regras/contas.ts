@@ -5,7 +5,7 @@ export const FORMAS_CONTA: Array<{ valor: FormaConta; rotulo: string; icone: str
   { valor: 'cartao', rotulo: 'Cartão', icone: '💳' },
   { valor: 'boleto', rotulo: 'Boleto', icone: '🧾' },
   { valor: 'pix', rotulo: 'Pix', icone: '⚡' },
-  { valor: 'debito', rotulo: 'Débito automático', icone: '🏦' },
+  { valor: 'debito', rotulo: 'Débito', icone: '🏦' },
   { valor: 'dinheiro', rotulo: 'Dinheiro', icone: '💵' },
   { valor: 'varia', rotulo: 'Escolho ao pagar', icone: '🔀' },
 ]
