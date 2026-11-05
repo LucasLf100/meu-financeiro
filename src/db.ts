@@ -38,11 +38,12 @@ export interface ContaFixa {
   totalParcelas?: number
   parcelaInicial?: number // número da parcela no mês de início (padrão 1)
   formaPagamento?: FormaConta // por onde a conta é paga (cartão, boleto, Pix…)
+  cartaoId?: number // se for paga no cartão: qual cartão (pagar a fatura marca a conta como paga)
   frequencia?: 'mensal' | 'anual' // padrão: mensal. Anual vence uma vez por ano, no mês de início.
   ativa: 0 | 1
 }
 
-export type FormaConta = 'cartao' | 'boleto' | 'pix' | 'debito' | 'dinheiro'
+export type FormaConta = 'cartao' | 'boleto' | 'pix' | 'debito' | 'dinheiro' | 'varia'
 
 /** Mudança que vale só para um mês de uma conta fixa. */
 export interface AjusteConta {
@@ -60,6 +61,9 @@ export interface PagamentoConta {
   competencia: string // AAAA-MM
   valor: number
   pagoEm: string
+  viaFaturaCartaoId?: number // marcado como pago ao pagar a fatura deste cartão
+  forma?: Exclude<FormaConta, 'varia'> // como foi paga neste mês
+  cartaoId?: number // se foi no cartão: qual
 }
 
 export interface Cartao {

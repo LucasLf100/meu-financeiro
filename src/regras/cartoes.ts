@@ -1,4 +1,5 @@
 import { db, type Cartao, type Gasto, type Parcela } from '../db'
+import { formaDaConta, ocorrenciasDoMes, type OcorrenciaConta } from './contas'
 import { diaDoMes, hoje, mesDe, somarMeses } from '../datas'
 
 /**
@@ -169,6 +170,46 @@ export async function recalcularFaturasDoCartao(cartao: Cartao & { id: number })
   }
   if (mudadas.length) await db.parcelas.bulkPut(mudadas)
   return mudadas.length
+}
+
+/** Contas fixas pagas neste cartão que vencem no mês da fatura (assinaturas, mensalidades…). */
+export async function contasDoCartao(cartaoId: number, fatura: string): Promise<OcorrenciaConta[]> {
+  const cartao = await db.cartoes.get(cartaoId)
+  // Sem cartão escolhido, reconhece pelo nome (ex.: "Anuidade do cartão Bradesco").
+  const palavra = cartao?.nome.split(' ')[0]?.toLowerCase() ?? ''
+  return (await ocorrenciasDoMes(fatura)).filter(
+    (o) =>
+      formaDaConta(o.conta) === 'cartao' &&
+      (o.conta.cartaoId === cartaoId || (o.conta.cartaoId === undefined && !!palavra && o.conta.nome.toLowerCase().includes(palavra))),
+  )
+}
+
+/**
+ * Paga a fatura: registra o pagamento e marca como pagas as contas fixas desse cartão no mês.
+ * O valor registrado é o total: compras e parcelas + contas fixas do cartão.
+ */
+export async function pagarFatura(cartao: Cartao & { id: number }, fatura: string, totalCompras: number, dia = hoje()) {
+  const contas = await contasDoCartao(cartao.id, fatura)
+  await db.transaction('rw', db.pagamentosFatura, db.pagamentosConta, async () => {
+    await db.pagamentosFatura.add({
+      cartaoId: cartao.id,
+      fatura,
+      valor: totalCompras + contas.reduce((s, o) => s + o.valor, 0),
+      pagoEm: dia,
+    })
+    for (const o of contas) {
+      if (o.pagamento) continue
+      await db.pagamentosConta.add({ contaId: o.conta.id, competencia: fatura, valor: o.valor, pagoEm: dia, viaFaturaCartaoId: cartao.id, forma: 'cartao', cartaoId: cartao.id })
+    }
+  })
+}
+
+/** Desfaz o pagamento da fatura e das contas fixas que foram marcadas junto com ela. */
+export async function desfazerPagamentoFatura(cartaoId: number, fatura: string) {
+  await db.transaction('rw', db.pagamentosFatura, db.pagamentosConta, async () => {
+    await db.pagamentosFatura.where({ cartaoId, fatura }).delete()
+    await db.pagamentosConta.where({ competencia: fatura }).filter((p) => p.viaFaturaCartaoId === cartaoId).delete()
+  })
 }
 
 export type StatusFatura = 'aberta' | 'fechada' | 'atrasada' | 'paga'

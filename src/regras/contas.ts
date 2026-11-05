@@ -7,6 +7,7 @@ export const FORMAS_CONTA: Array<{ valor: FormaConta; rotulo: string; icone: str
   { valor: 'pix', rotulo: 'Pix', icone: '⚡' },
   { valor: 'debito', rotulo: 'Débito automático', icone: '🏦' },
   { valor: 'dinheiro', rotulo: 'Dinheiro', icone: '💵' },
+  { valor: 'varia', rotulo: 'Escolho ao pagar', icone: '🔀' },
 ]
 
 /** Por onde a conta é paga. Sem forma escolhida, "cartão" no nome indica cartão. */
@@ -130,6 +131,7 @@ export interface MudancasConta {
   totalParcelas?: number
   formaPagamento?: FormaConta
   frequencia?: 'mensal' | 'anual'
+  cartaoId?: number
 }
 
 /**
@@ -144,7 +146,7 @@ export async function editarConta(conta: ContaFixa & { id: number }, mes: string
     const ajuste: AjusteConta = { ...existente, contaId: conta.id, competencia: mes, valor: mudancas.valor, diaVencimento: mudancas.diaVencimento }
     await db.ajustesConta.put(ajuste)
     // Nome e categoria não mudam "só neste mês": valem para a conta toda.
-    await db.contas.update(conta.id, { nome: mudancas.nome, categoriaId: mudancas.categoriaId, formaPagamento: mudancas.formaPagamento })
+    await db.contas.update(conta.id, { nome: mudancas.nome, categoriaId: mudancas.categoriaId, formaPagamento: mudancas.formaPagamento, cartaoId: mudancas.cartaoId })
     return
   }
 

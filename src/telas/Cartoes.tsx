@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Cartao } from '../db'
 import { formatarReais, lerValor } from '../dinheiro'
-import { formatarDia, formatarDiaCurto, hoje, nomeMes } from '../datas'
-import { datasDaFatura, faturaAberta, limiteUsado, listarFaturas, recalcularFaturasDoCartao, statusFatura, type StatusFatura } from '../regras/cartoes'
+import { formatarDia, formatarDiaCurto, nomeMes } from '../datas'
+import { contasDoCartao, datasDaFatura, desfazerPagamentoFatura, faturaAberta, limiteUsado, listarFaturas, pagarFatura, recalcularFaturasDoCartao, statusFatura, type StatusFatura } from '../regras/cartoes'
 import { BarraProgresso, Campo, Etiqueta, Folha, SeletorMes, Vazio, valorParaTexto, mascararValor } from '../componentes/ui'
 import { CORES } from '../componentes/SeletorCategoria'
 
@@ -65,14 +65,17 @@ function DetalheCartao({ cartao: inicial, aoFechar }: { cartao: Cartao; aoFechar
       db.parcelas.where({ cartaoId: cartao.id! }).toArray(),
     ])
     const gastos = await db.gastos.bulkGet([...new Set(todasParcelas.map((p) => p.gastoId))])
-    return { parcelas, pagamento, todasParcelas, gastos: gastos.filter((g) => !!g) }
+    const contas = await contasDoCartao(cartao.id!, fatura)
+    return { parcelas, pagamento, todasParcelas, gastos: gastos.filter((g) => !!g), contas }
   }, [cartao.id, fatura])
 
   if (editando) return <FormCartao cartao={cartao} aoFechar={() => setEditando(false)} aoRemover={aoFechar} />
   if (!dados) return null
 
-  const { parcelas, pagamento, todasParcelas, gastos } = dados
-  const total = parcelas.reduce((s, p) => s + p.valor, 0)
+  const { parcelas, pagamento, todasParcelas, gastos, contas } = dados
+  const totalCompras = parcelas.reduce((s, p) => s + p.valor, 0)
+  const totalContas = contas.reduce((s, o) => s + o.valor, 0)
+  const total = totalCompras + totalContas
   const status = statusFatura(cartao, fatura, !!pagamento)
   const { fechamento, vencimento } = datasDaFatura(cartao, fatura)
   const [rotulo, tipo] = ROTULO_STATUS[status]
@@ -91,7 +94,7 @@ function DetalheCartao({ cartao: inicial, aoFechar }: { cartao: Cartao; aoFechar
     .filter((x) => x.restantes.length > 0)
 
   async function pagar() {
-    await db.pagamentosFatura.add({ cartaoId: cartao.id!, fatura, valor: total, pagoEm: hoje() })
+    await pagarFatura(cartao as Cartao & { id: number }, fatura, totalCompras)
   }
 
   return (
@@ -105,14 +108,23 @@ function DetalheCartao({ cartao: inicial, aoFechar }: { cartao: Cartao; aoFechar
         <Etiqueta tipo={tipo}>{rotulo}</Etiqueta>
       </div>
       <p className="texto-suave">Fecha em {formatarDia(fechamento)} · vence em {formatarDia(vencimento)}</p>
+      {totalContas > 0 && (
+        <p className="texto-suave">Compras e parcelas {formatarReais(totalCompras)} + contas fixas no cartão {formatarReais(totalContas)}</p>
+      )}
 
       {pagamento ? (
         <>
           <p className="linha-info">Paga em {formatarDia(pagamento.pagoEm)}: <strong>{formatarReais(pagamento.valor)}</strong></p>
-          <button className="botao" onClick={() => db.pagamentosFatura.delete(pagamento.id!)}>Desfazer pagamento</button>
+          {contas.length > 0 && <p className="texto-suave">As {contas.length} contas fixas deste cartão foram marcadas como pagas junto.</p>}
+          <button className="botao" onClick={() => desfazerPagamentoFatura(cartao.id!, fatura)}>Desfazer pagamento</button>
         </>
       ) : (
-        total > 0 && <button className="botao botao-principal" onClick={pagar}>Pagar fatura ({formatarReais(total)})</button>
+        total > 0 && (
+          <>
+            <button className="botao botao-principal" onClick={pagar}>Pagar fatura ({formatarReais(total)})</button>
+            {contas.length > 0 && <small className="texto-suave">As contas fixas deste cartão ficam pagas junto.</small>}
+          </>
+        )
       )}
 
       <h3 className="subtitulo">Compras nesta fatura</h3>
@@ -131,6 +143,23 @@ function DetalheCartao({ cartao: inicial, aoFechar }: { cartao: Cartao; aoFechar
           )
         })}
       </div>
+
+      {contas.length > 0 && (
+        <>
+          <h3 className="subtitulo">Contas fixas neste cartão</h3>
+          <div className="lista">
+            {contas.map((o) => (
+              <div key={o.conta.id} className="item item-estatico">
+                <span className="item-texto">
+                  <strong>{o.conta.nome}</strong>
+                  <small>{o.parcela ? `parcela ${o.parcela.numero} de ${o.parcela.total}` : o.conta.frequencia === 'anual' ? 'anual' : 'todo mês'}{o.pagamento ? ' · paga' : ''}</small>
+                </span>
+                <strong className="item-valor">{o.valorEstimado ? '~' : ''}{formatarReais(o.valor)}</strong>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       {parceladas.length > 0 && (
         <>

@@ -78,7 +78,7 @@ export function Contas() {
                 <small>
                   {infoForma(formaDaConta(o.conta)) ? `${infoForma(formaDaConta(o.conta))!.icone} ` : ''}
                   {o.parcela ? `Parcela ${o.parcela.numero} de ${o.parcela.total} · ` : ''}
-                  {o.status === 'paga' ? `Paga em ${formatarDiaCurto(o.pagamento!.pagoEm)}` : `Vence ${formatarDiaCurto(o.vencimento)}`}
+                  {o.status === 'paga' ? `Paga em ${formatarDiaCurto(o.pagamento!.pagoEm)}${o.pagamento!.forma ? ` · ${infoForma(o.pagamento!.forma)?.rotulo}` : ''}` : `Vence ${formatarDiaCurto(o.vencimento)}`}
                 </small>
               </span>
               <span className="item-direita">
@@ -224,6 +224,11 @@ export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaCon
   const { conta, competencia, pagamento } = ocorrencia
   const [textoValor, setTextoValor] = useState(valorParaTexto(ocorrencia.valor))
   const [data, setData] = useState(hoje())
+  const formaCostume = formaDaConta(conta)
+  const [comoPagou, setComoPagou] = useState<Exclude<FormaConta, 'varia'> | ''>(formaCostume && formaCostume !== 'varia' ? formaCostume : '')
+  const cartoesAtivos = useLiveQuery(() => db.cartoes.where({ ativo: 1 }).toArray(), [], [])
+  const [cartaoPago, setCartaoPago] = useState<number | undefined>(conta.cartaoId)
+  const cartaoPagoEscolhido = cartaoPago ?? cartoesAtivos[0]?.id
   const [editando, setEditando] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
   const [erro, setErro] = useState('')
@@ -231,7 +236,15 @@ export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaCon
   async function marcarPaga() {
     const valor = lerValor(textoValor)
     if (!valor || valor <= 0) return setErro('Informe o valor pago.')
-    await db.pagamentosConta.add({ contaId: conta.id, competencia, valor, pagoEm: data })
+    if (!comoPagou) return setErro('Escolha como você pagou.')
+    await db.pagamentosConta.add({
+      contaId: conta.id,
+      competencia,
+      valor,
+      pagoEm: data,
+      forma: comoPagou,
+      cartaoId: comoPagou === 'cartao' ? cartaoPagoEscolhido : undefined,
+    })
     aoFechar()
   }
 
@@ -257,7 +270,7 @@ export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaCon
 
       {pagamento ? (
         <>
-          <p className="linha-info">Paga em {formatarDia(pagamento.pagoEm)}: <strong>{formatarReais(pagamento.valor)}</strong></p>
+          <p className="linha-info">Paga em {formatarDia(pagamento.pagoEm)}: <strong>{formatarReais(pagamento.valor)}</strong>{pagamento.forma ? ` · ${infoForma(pagamento.forma)?.icone} ${infoForma(pagamento.forma)?.rotulo}` : ''}{pagamento.viaFaturaCartaoId ? ' (junto com a fatura)' : ''}</p>
           <button className="botao" onClick={desmarcar}>Desmarcar pagamento</button>
         </>
       ) : (
@@ -271,6 +284,23 @@ export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaCon
             </Campo>
           </div>
           {erro && <p className="aviso aviso-erro">{erro}</p>}
+          <Campo rotulo="Como pagou">
+            <Opcoes
+              rotulo="Como pagou"
+              opcoes={FORMAS_CONTA.filter((f) => f.valor !== 'varia').map((f) => ({ valor: f.valor as Exclude<FormaConta, 'varia'>, rotulo: `${f.icone} ${f.rotulo}` }))}
+              valor={comoPagou}
+              aoMudar={setComoPagou}
+            />
+          </Campo>
+          {comoPagou === 'cartao' && cartoesAtivos.length > 0 && (
+            <Campo rotulo="Qual cartão">
+              <select value={cartaoPagoEscolhido} onChange={(e) => setCartaoPago(Number(e.target.value))}>
+                {cartoesAtivos.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </Campo>
+          )}
           <button className="botao botao-principal" onClick={marcarPaga}>Marcar como paga</button>
         </>
       )}
@@ -314,6 +344,9 @@ function FormConta({
   const [modo, setModo] = useState<ModoEdicao>('este-e-proximos')
   const [forma, setForma] = useState<FormaConta | ''>(conta ? formaDaConta(conta) ?? '' : '')
   const [frequencia, setFrequencia] = useState<'mensal' | 'anual'>(conta?.frequencia ?? 'mensal')
+  const cartoes = useLiveQuery(() => db.cartoes.where({ ativo: 1 }).toArray(), [], [])
+  const [cartaoId, setCartaoId] = useState<number | undefined>(conta?.cartaoId)
+  const cartaoEscolhido = cartaoId ?? cartoes[0]?.id
   const [mesAnual, setMesAnual] = useState(mes)
   const [erro, setErro] = useState('')
 
@@ -326,7 +359,7 @@ function FormConta({
     const atual = temFim ? Number(parcelaAtual) : 1
     if (temFim && (!total || total < 1 || !atual || atual < 1 || atual > total)) return setErro('Confira o número de parcelas.')
 
-    const mudancas = { nome: nome.trim(), valor, diaVencimento: dia, categoriaId, valorVariavel: variavel, totalParcelas: total, formaPagamento: forma || undefined, frequencia: frequencia === 'anual' ? ('anual' as const) : undefined }
+    const mudancas = { nome: nome.trim(), valor, diaVencimento: dia, categoriaId, valorVariavel: variavel, totalParcelas: total, formaPagamento: forma || undefined, cartaoId: forma === 'cartao' ? cartaoEscolhido : undefined, frequencia: frequencia === 'anual' ? ('anual' as const) : undefined }
     if (conta) {
       await editarConta(conta, mes, modo, mudancas)
     } else {
@@ -386,6 +419,15 @@ function FormConta({
           aoMudar={(v) => setForma(v === forma ? '' : v)}
         />
       </Campo>
+      {forma === 'cartao' && cartoes.length > 0 && (
+        <Campo rotulo="Qual cartão" dica="Ao pagar a fatura deste cartão, a conta fica paga junto.">
+          <select value={cartaoEscolhido} onChange={(e) => setCartaoId(Number(e.target.value))}>
+            {cartoes.map((c) => (
+              <option key={c.id} value={c.id}>{c.nome}</option>
+            ))}
+          </select>
+        </Campo>
+      )}
 
       <Campo rotulo="Categoria">
         <SeletorCategoria modo="pessoal" valor={categoriaId} aoMudar={setCategoriaId} />
