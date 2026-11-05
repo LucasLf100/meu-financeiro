@@ -7,7 +7,7 @@ import { apagarConta, contaEmVigor, contaValeNoMes, valorPorMes, editarConta, FO
 import { BarraProgresso, Campo, Etiqueta, Folha, Interruptor, Opcoes, SeletorMes, Vazio, valorParaTexto, mascararValor } from '../componentes/ui'
 import { SeletorCategoria } from '../componentes/SeletorCategoria'
 import { empresaNoBolso } from '../regras/empresa'
-import { faturasDoMes, type FaturaDoMes } from '../regras/cartoes'
+import { contasDentroDeFaturas, faturasDoMes, resumoDaFatura, type FaturaDoMes } from '../regras/cartoes'
 import { DetalheCartao } from './Cartoes'
 
 export function Contas() {
@@ -38,12 +38,15 @@ export function Contas() {
   const [faturaAberta, setFaturaAberta] = useState<FaturaDoMes | null>(null)
 
   if (!ocorrencias) return null
-  const pagas = ocorrencias.filter((o) => o.status === 'paga')
-  const aPagar = ocorrencias.filter((o) => o.status !== 'paga').sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor)
+  // Contas pagas no cartão ficam dentro da fatura, não soltas na lista.
+  const dentro = contasDentroDeFaturas(faturas)
+  const soltas = ocorrencias.filter((o) => !dentro.has(o.conta.id))
+  const pagas = soltas.filter((o) => o.status === 'paga')
+  const aPagar = soltas.filter((o) => o.status !== 'paga').sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor)
   const faturasAPagar = faturas.filter((f) => f.status !== 'paga')
   const faturasPagas = faturas.filter((f) => f.status === 'paga')
-  // Total do mês: contas fixas + faturas de cartão (compras e parcelas).
-  const total = ocorrencias.reduce((s, o) => s + o.valor, 0) + faturas.reduce((s, f) => s + f.valor, 0)
+  // Total do mês: contas fora do cartão + faturas (que já incluem as contas do cartão).
+  const total = soltas.reduce((s, o) => s + o.valor, 0) + faturas.reduce((s, f) => s + f.valor, 0)
   const pago = pagas.reduce((s, o) => s + o.valor, 0) + faturasPagas.reduce((s, f) => s + f.valor, 0)
   const atrasadas = aPagar.filter((o) => o.status === 'atrasada').length + faturasAPagar.filter((f) => f.status === 'atrasada').length
   const qtdAPagar = aPagar.length + faturasAPagar.length
@@ -54,7 +57,7 @@ export function Contas() {
       <span className="item-icone">💳<MarcaPagamento status={f.status === 'paga' ? 'paga' : 'pendente'} /></span>
       <span className="item-texto">
         <strong>Fatura {f.cartao.nome}</strong>
-        <small>{f.status === 'paga' ? 'Paga' : `Vence ${formatarDiaCurto(f.vencimento)}`} · compras e parcelas</small>
+        <small>{f.status === 'paga' ? 'Paga' : `Vence ${formatarDiaCurto(f.vencimento)}`} · {resumoDaFatura(f)}</small>
       </span>
       <span className="item-direita">
         <strong className="item-valor">{formatarReais(f.valor)}</strong>
@@ -65,15 +68,6 @@ export function Contas() {
   // Contas e faturas juntas, por vencimento.
   type Entrada = { vencimento: string; valor: number; no: ReactNode }
   const ordenar = (lista: Entrada[]) => lista.sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor).map((e) => e.no)
-  const doCartaoEmAberto = aPagar.filter((o) => formaDaConta(o.conta) === 'cartao')
-
-  async function marcarCartaoComoPagas() {
-    await db.transaction('rw', db.pagamentosConta, async () => {
-      for (const o of doCartaoEmAberto) {
-        await db.pagamentosConta.add({ contaId: o.conta.id, competencia: mes, valor: o.valor, pagoEm: hoje(), forma: 'cartao', cartaoId: o.conta.cartaoId })
-      }
-    })
-  }
 
   const item = (o: OcorrenciaConta) => {
     const c = categorias.find((x) => x.id === o.conta.categoriaId)
@@ -133,11 +127,7 @@ export function Contas() {
               ...faturasAPagar.map((f) => ({ vencimento: f.vencimento, valor: f.valor, no: itemFatura(f) })),
             ])}
           </div>
-          {doCartaoEmAberto.length > 1 && (
-            <button className="botao" onClick={marcarCartaoComoPagas}>
-              💳 Marcar as {doCartaoEmAberto.length} do cartão como pagas ({formatarReais(doCartaoEmAberto.reduce((s, o) => s + o.valor, 0))})
-            </button>
-          )}
+          {faturasAPagar.length > 0 && <small className="texto-suave">Toque na fatura para ver as compras e as contas do cartão e pagar tudo de uma vez.</small>}
         </section>
       )}
       {qtdPagas > 0 && qtdAPagar === 0 && <p className="texto-suave centro">Tudo pago em {nomeMes(mes)}. 🎉</p>}

@@ -6,7 +6,7 @@ import { resumoPessoal, type Compromisso } from '../regras/resumo'
 import { formaDaConta, infoForma, ocorrenciasDoMes, type OcorrenciaConta } from '../regras/contas'
 import { AcoesConta, EtiquetaStatus, MarcaPagamento } from './Contas'
 import { DetalheCartao } from './Cartoes'
-import { faturasDoMes, type FaturaDoMes } from '../regras/cartoes'
+import { contasDentroDeFaturas, faturasDoMes, resumoDaFatura, type FaturaDoMes } from '../regras/cartoes'
 import { AvisoBackup } from '../componentes/AvisoBackup'
 import { BarraProgresso, Folha, Opcoes } from '../componentes/ui'
 import type { Aba } from '../componentes/BarraInferior'
@@ -236,8 +236,10 @@ function ContasDoMes({ aoVer }: { aoVer: () => void }) {
   // Abas: este mês e o próximo. Abre sempre no mês atual.
   const [mesDasContas, setMesDasContas] = useState(mesAtual())
   const dados = useLiveQuery(async () => ({ itens: await ocorrenciasDoMes(mesDasContas), faturas: await faturasDoMes(mesDasContas) }), [mesDasContas])
-  const itens = dados?.itens ?? []
   const faturas = dados?.faturas ?? []
+  // Contas pagas no cartão aparecem dentro da fatura, não soltas.
+  const dentro = contasDentroDeFaturas(faturas)
+  const itens = (dados?.itens ?? []).filter((o) => !dentro.has(o.conta.id))
   const total = itens.reduce((s, o) => s + o.valor, 0) + faturas.reduce((s, f) => s + f.valor, 0)
   const pago = itens.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0) + faturas.filter((f) => f.status === 'paga').reduce((s, f) => s + f.valor, 0)
   const atrasadas = itens.filter((o) => o.status === 'atrasada').length + faturas.filter((f) => f.status === 'atrasada').length
@@ -280,7 +282,7 @@ function ContasDoMes({ aoVer }: { aoVer: () => void }) {
                 <span className="item-icone">💳<MarcaPagamento status={f.status === 'paga' ? 'paga' : 'pendente'} /></span>
                 <span className="item-texto">
                   <strong>Fatura {f.cartao.nome}</strong>
-                  <small>dia {Number(f.vencimento.slice(8, 10))} · compras e parcelas</small>
+                  <small>dia {Number(f.vencimento.slice(8, 10))} · {resumoDaFatura(f)}</small>
                 </span>
                 <span className="item-direita">
                   <strong className="item-valor">{formatarReais(f.valor)}</strong>

@@ -216,12 +216,16 @@ export interface FaturaDoMes {
   cartao: Cartao & { id: number }
   fatura: string // mês do vencimento
   vencimento: string
-  /** Compras e parcelas (as contas fixas do cartão aparecem separadas, na lista de contas). */
+  /** Total da fatura: compras e parcelas + contas fixas pagas neste cartão. */
   valor: number
+  compras: number
+  qtdCompras: number
+  /** Contas fixas do cartão neste mês (ficam DENTRO da fatura, não soltas na lista). */
+  contas: OcorrenciaConta[]
   status: 'paga' | 'pendente' | 'atrasada'
 }
 
-/** Faturas de cartão que vencem no mês, para aparecerem junto das contas a pagar. */
+/** Faturas de cartão que vencem no mês, com as compras e as contas fixas do cartão agrupadas. */
 export async function faturasDoMes(mes: string): Promise<FaturaDoMes[]> {
   const [cartoes, parcelas, pagamentos] = await Promise.all([
     db.cartoes.toArray(),
@@ -231,12 +235,13 @@ export async function faturasDoMes(mes: string): Promise<FaturaDoMes[]> {
   const dia = hoje()
   const lista: FaturaDoMes[] = []
   for (const cartao of cartoes) {
-    const compras = parcelas.filter((p) => p.cartaoId === cartao.id).reduce((s, p) => s + p.valor, 0)
+    const doCartao = parcelas.filter((p) => p.cartaoId === cartao.id)
+    const compras = doCartao.reduce((s, p) => s + p.valor, 0)
+    const contas = await contasDoCartao(cartao.id!, mes)
     const pagamento = pagamentos.find((p) => p.cartaoId === cartao.id)
-    if (!compras && !pagamento) continue
-    // Fatura paga vale pelo valor pago, menos as contas fixas do cartão (que já aparecem na lista de contas).
-    const contasNoCartao = pagamento ? (await contasDoCartao(cartao.id!, mes)).reduce((s, o) => s + o.valor, 0) : 0
-    const valor = pagamento ? Math.max(compras, pagamento.valor - contasNoCartao) : compras
+    const soma = compras + contas.reduce((s, o) => s + o.valor, 0)
+    // Fatura paga vale pelo valor pago (pode ter compras que o app não conhece).
+    const valor = pagamento ? Math.max(soma, pagamento.valor) : soma
     if (!valor) continue
     const { vencimento } = datasDaFatura(cartao, mes)
     lista.push({
@@ -244,10 +249,26 @@ export async function faturasDoMes(mes: string): Promise<FaturaDoMes[]> {
       fatura: mes,
       vencimento,
       valor,
+      compras,
+      qtdCompras: doCartao.length,
+      contas,
       status: pagamento ? 'paga' : vencimento < dia ? 'atrasada' : 'pendente',
     })
   }
   return lista
+}
+
+/** Ids das contas que já aparecem dentro de alguma fatura (para não repetir na lista). */
+export function contasDentroDeFaturas(faturas: FaturaDoMes[]): Set<number> {
+  return new Set(faturas.flatMap((f) => f.contas.map((o) => o.conta.id)))
+}
+
+/** "8 contas fixas + 4 compras" */
+export function resumoDaFatura(f: FaturaDoMes): string {
+  const partes = []
+  if (f.contas.length) partes.push(`${f.contas.length} conta${f.contas.length > 1 ? 's' : ''} fixa${f.contas.length > 1 ? 's' : ''}`)
+  if (f.qtdCompras) partes.push(`${f.qtdCompras} compra${f.qtdCompras > 1 ? 's' : ''} e parcela${f.qtdCompras > 1 ? 's' : ''}`)
+  return partes.join(' + ') || 'fatura'
 }
 
 export type StatusFatura = 'aberta' | 'fechada' | 'atrasada' | 'paga'
