@@ -27,25 +27,53 @@ export function Contas() {
   }
   const [nova, setNova] = useState(false)
   const [editando, setEditando] = useState<{ conta: ContaFixa & { id: number }; mes: string } | null>(null)
+  const [verPagas, setVerPagas] = useState(false)
+  const [verGerenciar, setVerGerenciar] = useState(false)
   const ocorrencias = useLiveQuery(() => ocorrenciasDoMes(mes), [mes])
   const categorias = useLiveQuery(() => db.categorias.toArray(), [], [])
+  const visaoGeral = useLiveQuery(calcularVisaoGeral)
 
   if (!ocorrencias) return null
   const total = ocorrencias.reduce((s, o) => s + o.valor, 0)
-  const pago = ocorrencias.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0)
-  const atrasadas = ocorrencias.filter((o) => o.status === 'atrasada').length
+  const pagas = ocorrencias.filter((o) => o.status === 'paga')
+  const aPagar = ocorrencias.filter((o) => o.status !== 'paga').sort((a, b) => a.vencimento.localeCompare(b.vencimento) || b.valor - a.valor)
+  const pago = pagas.reduce((s, o) => s + o.valor, 0)
+  const atrasadas = aPagar.filter((o) => o.status === 'atrasada').length
+  const doCartaoEmAberto = aPagar.filter((o) => formaDaConta(o.conta) === 'cartao')
+
+  async function marcarCartaoComoPagas() {
+    await db.transaction('rw', db.pagamentosConta, async () => {
+      for (const o of doCartaoEmAberto) {
+        await db.pagamentosConta.add({ contaId: o.conta.id, competencia: mes, valor: o.valor, pagoEm: hoje(), forma: 'cartao', cartaoId: o.conta.cartaoId })
+      }
+    })
+  }
+
+  const item = (o: OcorrenciaConta) => {
+    const c = categorias.find((x) => x.id === o.conta.categoriaId)
+    const forma = infoForma(o.pagamento?.forma ?? formaDaConta(o.conta))
+    return (
+      <button key={o.conta.id} className="item" onClick={() => setAberta(o)}>
+        <span className="item-icone" style={{ background: `${c?.cor ?? '#94a3b8'}22` }}>{forma?.icone ?? c?.icone ?? '📄'}<MarcaPagamento status={o.status} /></span>
+        <span className="item-texto">
+          <strong>{o.conta.nome}</strong>
+          <small>
+            {o.status === 'paga'
+              ? `Paga em ${formatarDiaCurto(o.pagamento!.pagoEm)}${forma ? ` · ${forma.rotulo}` : ''}`
+              : `Vence ${formatarDiaCurto(o.vencimento)}${forma ? ` · ${forma.rotulo}` : ''}`}
+            {o.parcela ? ` · parcela ${o.parcela.numero} de ${o.parcela.total}` : ''}
+          </small>
+        </span>
+        <span className="item-direita">
+          <strong className="item-valor">{o.valorEstimado ? '~' : ''}{formatarReais(o.valor)}</strong>
+          <EtiquetaStatus status={o.status} />
+        </span>
+      </button>
+    )
+  }
 
   return (
     <div className="tela">
-      <TodasAsContas
-        aoAbrir={async ({ conta, mes: mesDaConta }) => {
-          const ocorrencia = (await ocorrenciasDoMes(mesDaConta)).find((o) => o.conta.id === conta.id)
-          if (ocorrencia) setAberta(ocorrencia)
-          else setEditando({ conta, mes: mesDaConta })
-        }}
-      />
-
-      <h3 className="titulo-secao">Mês a mês</h3>
       <SeletorMes mes={mes} aoMudar={mudarMes} />
 
       <section className="bloco">
@@ -56,41 +84,62 @@ export function Contas() {
           </div>
           <div className="direita">
             <span className="rotulo texto-suave">Falta pagar</span>
-            <strong className={atrasadas ? 'texto-perigo' : ''}>{formatarReais(total - pago)}</strong>
+            <strong className={aPagar.length ? 'texto-perigo' : 'texto-ok'}>{formatarReais(total - pago)}</strong>
           </div>
         </div>
-        <BarraProgresso valor={pago} total={total} />
+        <BarraProgresso valor={pago} total={total} perigo={atrasadas > 0} />
         <small className="texto-suave">
           {formatarReais(pago)} pagos{atrasadas ? ` · ${atrasadas} atrasada${atrasadas > 1 ? 's' : ''}` : ''}
         </small>
+        {visaoGeral && visaoGeral.porMes > 0 && (
+          <small className="texto-suave">Em média, por mês: {formatarReais(visaoGeral.porMes)} (anuais divididos por 12{visaoGeral.empresaPorMes ? ', com a empresa' : ''}).</small>
+        )}
       </section>
 
-      {ocorrencias.length === 0 && <Vazio icone="📅" titulo="Nenhuma conta fixa" texto="Cadastre aluguel, luz, internet, assinaturas…" />}
+      {ocorrencias.length === 0 && <Vazio icone="📅" titulo="Nenhuma conta neste mês" texto="Use “+ Nova conta fixa” para cadastrar luz, aluguel, assinaturas, parcelas…" />}
 
-      <div className="lista">
-        {ocorrencias.map((o) => {
-          const c = categorias.find((x) => x.id === o.conta.categoriaId)
-          return (
-            <button key={o.conta.id} className="item" onClick={() => setAberta(o)}>
-              <span className="item-icone" style={{ background: `${c?.cor ?? '#94a3b8'}22` }}>{c?.icone ?? '📄'}<MarcaPagamento status={o.status} /></span>
-              <span className="item-texto">
-                <strong>{o.conta.nome}</strong>
-                <small>
-                  {infoForma(formaDaConta(o.conta)) ? `${infoForma(formaDaConta(o.conta))!.icone} ` : ''}
-                  {o.parcela ? `Parcela ${o.parcela.numero} de ${o.parcela.total} · ` : ''}
-                  {o.status === 'paga' ? `Paga em ${formatarDiaCurto(o.pagamento!.pagoEm)}${o.pagamento!.forma ? ` · ${infoForma(o.pagamento!.forma)?.rotulo}` : ''}` : `Vence ${formatarDiaCurto(o.vencimento)}`}
-                </small>
-              </span>
-              <span className="item-direita">
-                <strong className="item-valor">{o.valorEstimado ? '~' : ''}{formatarReais(o.valor)}</strong>
-                <EtiquetaStatus status={o.status} />
-              </span>
+      {aPagar.length > 0 && (
+        <section className="grupo">
+          <h3 className="grupo-titulo"><span>A pagar ({aPagar.length})</span><span>{formatarReais(total - pago)}</span></h3>
+          <div className="lista">{aPagar.map(item)}</div>
+          {doCartaoEmAberto.length > 1 && (
+            <button className="botao" onClick={marcarCartaoComoPagas}>
+              💳 Marcar as {doCartaoEmAberto.length} do cartão como pagas ({formatarReais(doCartaoEmAberto.reduce((s, o) => s + o.valor, 0))})
             </button>
-          )
-        })}
-      </div>
+          )}
+        </section>
+      )}
+      {ocorrencias.length > 0 && aPagar.length === 0 && <p className="texto-suave centro">Tudo pago em {nomeMes(mes)}. 🎉</p>}
+
+      {pagas.length > 0 && (
+        <section className="grupo">
+          <button className="grupo-titulo grupo-recolhivel" onClick={() => setVerPagas(!verPagas)} aria-expanded={verPagas}>
+            <span>{verPagas ? '▾' : '▸'} Pagas ({pagas.length})</span>
+            <span>{formatarReais(pago)}</span>
+          </button>
+          {verPagas && <div className="lista">{pagas.map(item)}</div>}
+        </section>
+      )}
 
       <button className="botao" onClick={() => setNova(true)}>+ Nova conta fixa</button>
+
+      {visaoGeral && visaoGeral.quantidade > 0 && (
+        <section className="grupo">
+          <button className="grupo-titulo grupo-recolhivel" onClick={() => setVerGerenciar(!verGerenciar)} aria-expanded={verGerenciar}>
+            <span>{verGerenciar ? '▾' : '▸'} Gerenciar contas ({visaoGeral.quantidade})</span>
+            <span>~{formatarReais(visaoGeral.porMes)}/mês</span>
+          </button>
+          {verGerenciar && (
+            <TodasAsContas
+              aoAbrir={async ({ conta, mes: mesDaConta }) => {
+                const ocorrencia = (await ocorrenciasDoMes(mesDaConta)).find((o) => o.conta.id === conta.id)
+                if (ocorrencia) setAberta(ocorrencia)
+                else setEditando({ conta, mes: mesDaConta })
+              }}
+            />
+          )}
+        </section>
+      )}
 
       {aberta && <AcoesConta ocorrencia={aberta} aoFechar={() => setAberta(null)} />}
       {nova && <FormConta mes={mes} aoFechar={() => setNova(false)} />}
@@ -111,33 +160,42 @@ function proximoVencimento(conta: ContaFixa, desde: string): string {
   return desde
 }
 
-/** Visão geral: todas as contas fixas em vigor, com o total por mês. */
-function TodasAsContas({ aoAbrir }: { aoAbrir: (e: { conta: ContaFixa & { id: number }; mes: string }) => void }) {
-  const dados = useLiveQuery(async () => {
-    const [contas, categorias, empresa] = await Promise.all([db.contas.toArray(), db.categorias.toArray(), empresaNoBolso()])
-    const atual = mesAtual()
-    const lista: ContaResumo[] = []
-    for (const conta of contas) {
-      const aPartirDe = conta.inicio > atual ? conta.inicio : atual
-      if (!contaEmVigor(conta, aPartirDe)) continue // encerrada ou já quitada
-      let restantes: number | undefined
-      if (conta.totalParcelas) {
-        restantes = 0
-        for (let m = aPartirDe, passos = 0; passos < 1200 && contaEmVigor(conta, m); m = somarMeses(m, 1), passos++) if (contaValeNoMes(conta, m)) restantes++
-      }
-      lista.push({ conta: conta as ContaFixa & { id: number }, aPartirDe, restantes })
+/** Todas as contas em vigor, com parcelas restantes, e a média por mês (anuais ÷ 12, mais a empresa). */
+async function calcularVisaoGeral() {
+  const [contas, empresa] = await Promise.all([db.contas.toArray(), empresaNoBolso()])
+  const atual = mesAtual()
+  const lista: ContaResumo[] = []
+  for (const conta of contas) {
+    const aPartirDe = conta.inicio > atual ? conta.inicio : atual
+    if (!contaEmVigor(conta, aPartirDe)) continue // encerrada ou já quitada
+    let restantes: number | undefined
+    if (conta.totalParcelas) {
+      restantes = 0
+      for (let m = aPartirDe, passos = 0; passos < 1200 && contaEmVigor(conta, m); m = somarMeses(m, 1), passos++) if (contaValeNoMes(conta, m)) restantes++
     }
-    return { lista: lista.sort((a, b) => b.conta.valor - a.conta.valor), categorias, atual, empresa }
-  })
-
-  if (!dados) return null
-  const { lista, categorias, atual, empresa } = dados
-  // Cobranças da empresa pagas do meu bolso, em média por mês (anual ÷ 12).
+    lista.push({ conta: conta as ContaFixa & { id: number }, aPartirDe, restantes })
+  }
   const daEmpresa = empresa.ativo ? empresa.recorrentes : []
   const empresaPorMes = daEmpresa.reduce((s, c) => s + (c.tipo === 'anual' ? Math.round(c.valorReais / 12) : c.valorReais), 0)
-  if (lista.length === 0 && daEmpresa.length === 0) return null
+  return {
+    lista: lista.sort((a, b) => b.conta.valor - a.conta.valor),
+    daEmpresa,
+    empresaPorMes,
+    porMes: lista.reduce((s, c) => s + valorPorMes(c.conta), 0) + empresaPorMes,
+    quantidade: lista.length + daEmpresa.length,
+    atual,
+  }
+}
 
-  const recorrentes = lista.filter((c) => c.restantes === undefined)
+/** Cadastro: todas as contas em vigor, separadas em mensais, anuais, parceladas e empresa. */
+function TodasAsContas({ aoAbrir }: { aoAbrir: (e: { conta: ContaFixa & { id: number }; mes: string }) => void }) {
+  const dados = useLiveQuery(async () => ({ visao: await calcularVisaoGeral(), categorias: await db.categorias.toArray() }))
+  if (!dados) return null
+  const { visao, categorias } = dados
+  const { lista, daEmpresa, empresaPorMes, atual } = visao
+
+  const mensais = lista.filter((c) => c.restantes === undefined && c.conta.frequencia !== 'anual')
+  const anuais = lista.filter((c) => c.restantes === undefined && c.conta.frequencia === 'anual')
   const parceladas = lista.filter((c) => c.restantes !== undefined)
   const soma = (l: ContaResumo[]) => l.reduce((s, c) => s + valorPorMes(c.conta), 0)
   const faltaParceladas = parceladas.reduce((s, c) => s + c.conta.valor * (c.restantes ?? 0), 0)
@@ -146,15 +204,14 @@ function TodasAsContas({ aoAbrir }: { aoAbrir: (e: { conta: ContaFixa & { id: nu
     const cat = categorias.find((x) => x.id === c.conta.categoriaId)
     const forma = infoForma(formaDaConta(c.conta))
     const detalhe = [
-      forma ? `${forma.icone} ${forma.rotulo}` : null,
-      `dia ${c.conta.diaVencimento}`,
-      c.conta.frequencia === 'anual' ? `anual, em ${MESES[Number(c.conta.inicio.slice(5, 7)) - 1]} · ~${formatarReais(valorPorMes(c.conta))}/mês` : null,
+      forma ? forma.rotulo : null,
+      c.conta.frequencia === 'anual' ? `todo ano em ${MESES[Number(c.conta.inicio.slice(5, 7)) - 1]}, dia ${c.conta.diaVencimento}` : `dia ${c.conta.diaVencimento}`,
       c.restantes !== undefined ? `faltam ${c.restantes} de ${c.conta.totalParcelas}` : c.conta.valorVariavel ? 'valor varia' : null,
       c.aPartirDe > atual ? `começa em ${nomeMes(c.aPartirDe)}` : null,
     ].filter(Boolean).join(' · ')
     return (
       <button key={c.conta.id} className="item" onClick={() => aoAbrir({ conta: c.conta, mes: proximoVencimento(c.conta, c.aPartirDe) })}>
-        <span className="item-icone" style={{ background: `${cat?.cor ?? '#94a3b8'}22` }}>{cat?.icone ?? '📄'}</span>
+        <span className="item-icone" style={{ background: `${cat?.cor ?? '#94a3b8'}22` }}>{forma?.icone ?? cat?.icone ?? '📄'}</span>
         <span className="item-texto">
           <strong>{c.conta.nome}</strong>
           <small>{detalhe}</small>
@@ -164,34 +221,24 @@ function TodasAsContas({ aoAbrir }: { aoAbrir: (e: { conta: ContaFixa & { id: nu
     )
   }
 
+  const grupo = (titulo: string, itens: ContaResumo[], direita: string, rodape?: string) =>
+    itens.length > 0 && (
+      <div className="subgrupo">
+        <h4 className="subgrupo-titulo"><span>{titulo} ({itens.length})</span><span>{direita}</span></h4>
+        <div className="lista">{itens.map(linha)}</div>
+        {rodape && <small className="texto-suave">{rodape}</small>}
+      </div>
+    )
+
   return (
     <>
-      <section className="bloco">
-        <span className="rotulo texto-suave">Todas as contas fixas · por mês</span>
-        <strong className="valor-medio">{formatarReais(soma(lista) + empresaPorMes)}</strong>
-        <div className="linha-resumo">
-          <small className="texto-suave">Recorrentes: {formatarReais(soma(recorrentes))}</small>
-          {parceladas.length > 0 && <small className="texto-suave">Parceladas: {formatarReais(soma(parceladas))}</small>}
-        </div>
-        {daEmpresa.length > 0 && <small className="texto-suave">Empresa (do meu bolso): ~{formatarReais(empresaPorMes)} por mês, contando os anuais divididos por 12.</small>}
-        {parceladas.length > 0 && <small className="texto-suave">Ainda faltam {formatarReais(faltaParceladas)} nas parceladas.</small>}
-      </section>
-
-      {recorrentes.length > 0 && (
-        <section className="grupo">
-          <h3 className="grupo-titulo"><span>Recorrentes ({recorrentes.length})</span><span>{formatarReais(soma(recorrentes))}</span></h3>
-          <div className="lista">{recorrentes.map(linha)}</div>
-        </section>
-      )}
-      {parceladas.length > 0 && (
-        <section className="grupo">
-          <h3 className="grupo-titulo"><span>Parceladas ({parceladas.length})</span><span>{formatarReais(soma(parceladas))}</span></h3>
-          <div className="lista">{parceladas.map(linha)}</div>
-        </section>
-      )}
+      <small className="texto-suave">Toque numa conta para pagar, editar ou encerrar.</small>
+      {grupo('Todo mês', mensais, `${formatarReais(soma(mensais))}/mês`)}
+      {grupo('Todo ano', anuais, `~${formatarReais(soma(anuais))}/mês`)}
+      {grupo('Parceladas', parceladas, `${formatarReais(soma(parceladas))}/mês`, `Ainda faltam ${formatarReais(faltaParceladas)} nas parceladas.`)}
       {daEmpresa.length > 0 && (
-        <section className="grupo">
-          <h3 className="grupo-titulo"><span>Empresa, do meu bolso ({daEmpresa.length})</span><span>~{formatarReais(empresaPorMes)}/mês</span></h3>
+        <div className="subgrupo">
+          <h4 className="subgrupo-titulo"><span>Empresa, do meu bolso ({daEmpresa.length})</span><span>~{formatarReais(empresaPorMes)}/mês</span></h4>
           <div className="lista">
             {daEmpresa.map((c) => (
               <div key={c.id} className="item item-estatico">
@@ -208,7 +255,7 @@ function TodasAsContas({ aoAbrir }: { aoAbrir: (e: { conta: ContaFixa & { id: nu
             ))}
           </div>
           <small className="texto-suave">Para mudar, vá ao modo Empresa. Para não somar no Pessoal, desligue em Ajustes.</small>
-        </section>
+        </div>
       )}
     </>
   )

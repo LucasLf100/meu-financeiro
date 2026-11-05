@@ -477,6 +477,21 @@ button.item:active { background: var(--superficie-2); }
 
 .titulo-secao { margin: 10px 4px -6px; font-size: 1rem; }
 
+/* Seções que abrem e fecham (Pagas, Gerenciar contas) */
+.grupo-recolhivel {
+  width: 100%;
+  padding: 12px 14px;
+  margin: 0;
+  border: 1px solid var(--borda);
+  border-radius: 14px;
+  background: var(--superficie);
+  color: var(--texto);
+  font-size: 0.92rem;
+  text-align: left;
+}
+.subgrupo { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.subgrupo-titulo { display: flex; justify-content: space-between; margin: 4px 4px 0; color: var(--texto-suave); font-size: 0.8rem; font-weight: 600; }
+
 /* Bolinha de pago (verde) / não pago (vermelha) no canto do ícone da conta */
 .item-icone { position: relative; }
 .marca-pagamento {
