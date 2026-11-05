@@ -6,7 +6,7 @@ Versão 2.0 · Novembro de 2026 · Uso pessoal (Lucas)
 
 ## 1. Objetivo
 
-Um app para **controlar o que eu devo e o que eu gasto**, na vida pessoal e no meu negócio (Valtaris), num lugar só.
+Um app para **controlar o que eu devo e o que eu gasto**, na vida pessoal e no meu negócio, num lugar só.
 
 O app **não substitui o banco**: o saldo eu vejo lá. O foco aqui é a **dívida**, os **compromissos** e os **gastos**.
 
@@ -43,7 +43,7 @@ O botão **+** do meio abre o lançamento rápido do modo atual.
 - Contas atrasadas, em vermelho.
 - Uso dos cartões (limite usado e limite disponível).
 - Gráfico da dívida nos últimos 6 meses.
-- **A receber da Valtaris:** total dos reembolsos pendentes (ver 5.5).
+- **A receber da empresa:** total dos reembolsos pendentes (ver 5.5).
 
 ### 4.2 Gastos (avulsos)
 O que não é conta fixa. Exemplo: uma camiseta paga no débito.
@@ -84,12 +84,12 @@ Aluguel, luz, internet, celular, assinaturas…
 
 ---
 
-## 5. Modo Empresa (Valtaris)
+## 5. Modo Empresa
 
 ### 5.1 Início
 - **Custo mensal da empresa**: recorrentes mensais + anuais divididos por 12 (exemplo: R$ 40/ano aparece como R$ 3,33/mês).
 - **Gasto real do mês**: o que foi pago de fato, incluindo cobranças por uso.
-- **Custo por produto:** Valtaris (geral) · PaintFlow · Ritmê.
+- **Custo por produto** (se houver produtos cadastrados).
 - **Próximas renovações** (60 dias), com aviso se a renovação é **manual**.
 - **Reembolsos pendentes:** o que eu paguei do meu bolso para a empresa.
 
@@ -100,7 +100,7 @@ O catálogo de tudo o que a empresa usa.
 |---|---|
 | Nome | Zoho Mail |
 | Para que serve | E-mail da empresa |
-| Produto | Valtaris / PaintFlow / Ritmê |
+| Produto | Opcional |
 | Link do painel | mailadmin.zoho.com |
 | E-mail da conta | lucas@valtaris.com.br |
 | Plano | Mail Lite 5 GB, 1 usuário |
@@ -128,9 +128,9 @@ Funciona igual ao **Novo gasto** pessoal, só que com o campo **produto** e sem 
 Enquanto a empresa não tem CNPJ e conta própria, eu pago tudo do meu bolso.
 
 - Toda cobrança ou gasto da empresa tem a opção **"Pago por mim, a reembolsar"**.
-- O app soma o total que a Valtaris me deve.
+- O app soma o total que a empresa me deve.
 - Botão **Marcar como reembolsado**, com a data.
-- No modo Pessoal, o total aparece em **A receber da Valtaris**.
+- No modo Pessoal, o total aparece em **A receber da empresa**.
 - Campo para anotar onde está o comprovante (para a contabilidade depois).
 
 ### 5.6 Retiradas (pró-labore)
@@ -139,20 +139,9 @@ Para o futuro, quando a empresa faturar:
 - Mostra a entrada correspondente no Pessoal.
 - Os dois lados ficam ligados, sem misturar os números.
 
-### 5.7 Dados iniciais (já conhecidos)
+### 5.7 Começa vazio
 
-| Plataforma | Produto | Tipo | Valor | Renovação | Status |
-|---|---|---|---|---|---|
-| registro.br — valtaris.com.br | Valtaris | Anual | ~R$ 40 | ~28/10/2027, conferir | Ativa · pago por mim |
-| Zoho Mail Lite (1 usuário) | Valtaris | Anual, **manual** (Pix) | R$ 60 | 30/10/2027 | Ativa · pago por mim |
-| Domínio ritmestudio.com.br | Ritmê | Anual | a preencher | a preencher | Ativa |
-| Vercel Hobby | Ritmê | Grátis | R$ 0 | — | Ativa (trocar antes de cobrar) |
-| Render (API) | PaintFlow | Grátis | R$ 0 | — | Planejada |
-| Neon (banco) | PaintFlow | Grátis | R$ 0 | — | Planejada |
-| Cloudflare Pages | PaintFlow | Grátis | R$ 0 | — | Planejada |
-| Resend (e-mails) | PaintFlow | Grátis | R$ 0 | — | Planejada |
-| OpenAI | PaintFlow | Por uso, US$ | varia | — | Planejada |
-| Sentry | PaintFlow | Grátis | R$ 0 | — | Planejada |
+O modo Empresa começa sem nenhum dado. Produtos ou projetos são opcionais e cadastrados em Ajustes; sem eles, tudo fica como "Geral". Em Ajustes também dá para apagar todos os dados da Empresa.
 
 Plataformas grátis também ficam no catálogo: assim eu sei o que uso, com qual e-mail, e quando um plano grátis pode virar pago.
 

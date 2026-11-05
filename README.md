@@ -1,6 +1,6 @@
 # Meu Financeiro
 
-App pessoal para controlar dívidas e gastos, no modo **Pessoal** e no modo **Empresa** (Valtaris).
+App pessoal para controlar dívidas e gastos, no modo **Pessoal** e no modo **Empresa**.
 
 - Funciona offline e instala no celular (PWA).
 - Os dados ficam **só no aparelho** (IndexedDB). Nada vai para servidor nem para este repositório.

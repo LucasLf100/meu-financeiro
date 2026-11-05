@@ -32,7 +32,9 @@ export function Plataformas() {
 
   return (
     <div className="tela">
-      <Opcoes rotulo="Filtrar por produto" opcoes={[{ valor: 0, rotulo: 'Todos' }, ...produtos.map((p) => ({ valor: p.id!, rotulo: p.nome }))]} valor={filtro} aoMudar={setFiltro} />
+      {produtos.length > 0 && (
+        <Opcoes rotulo="Filtrar por produto" opcoes={[{ valor: 0, rotulo: 'Todos' }, ...produtos.map((p) => ({ valor: p.id!, rotulo: p.nome }))]} valor={filtro} aoMudar={setFiltro} />
+      )}
 
       {visiveis.length === 0 && <Vazio icone="🧩" titulo="Nenhuma plataforma" texto="Cadastre hospedagem, domínio, e-mail, banco de dados…" />}
 
@@ -47,7 +49,7 @@ export function Plataformas() {
               <span className="item-icone" style={{ background: `${produto?.cor ?? '#94a3b8'}22`, color: produto?.cor }}>{p.nome.slice(0, 1).toUpperCase()}</span>
               <span className="item-texto">
                 <strong>{p.nome}</strong>
-                <small>{produto?.nome} · {p.descricao || suas.map(descreverCobranca).join(', ')}</small>
+                <small>{[produto?.nome, p.descricao || suas.map(descreverCobranca).join(', ')].filter(Boolean).join(' · ')}</small>
               </span>
               <span className="item-direita">
                 <strong className="item-valor">{mensal ? `${formatarReais(mensal)}/mês` : suas.some((c) => c.tipo === 'gratis') ? 'Grátis' : '—'}</strong>
@@ -70,7 +72,7 @@ export function DetalhePlataforma({ id, aoFechar }: { id: number; aoFechar: () =
   const dados = useLiveQuery(async () => {
     const plataforma = await db.plataformas.get(id)
     if (!plataforma) return { plataforma }
-    const [produto, cobrancas] = await Promise.all([db.produtos.get(plataforma.produtoId), db.cobrancas.where({ plataformaId: id }).toArray()])
+    const [produto, cobrancas] = await Promise.all([(plataforma.produtoId ? db.produtos.get(plataforma.produtoId) : undefined), db.cobrancas.where({ plataformaId: id }).toArray()])
     const pagamentos = await db.pagamentosCobranca.where('cobrancaId').anyOf(cobrancas.map((c) => c.id!)).reverse().sortBy('pagoEm')
     return { plataforma, produto, cobrancas, pagamentos }
   }, [id])
@@ -95,7 +97,7 @@ export function DetalhePlataforma({ id, aoFechar }: { id: number; aoFechar: () =
   return (
     <Folha titulo={plataforma.nome} aoFechar={aoFechar}>
       <div className="linha-resumo">
-        <span className="texto-suave">{produto?.nome}{plataforma.descricao ? ` · ${plataforma.descricao}` : ''}</span>
+        <span className="texto-suave">{[produto?.nome, plataforma.descricao].filter(Boolean).join(' · ')}</span>
         <Etiqueta tipo={tipo}>{rotulo}</Etiqueta>
       </div>
       <dl className="ficha">

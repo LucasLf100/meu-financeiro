@@ -1,6 +1,6 @@
 import { db, type Cartao } from '../db'
 import { diasAte, mesAtual, mesDe, somarMeses } from '../datas'
-import { atrasadasAnteriores, ocorrenciasDoMes } from './contas'
+import { atrasadasAnteriores, contaValeNoMes, ocorrenciasDoMes } from './contas'
 import { limiteUsado, listarFaturas } from './cartoes'
 import { reembolsosPendentes } from './empresa'
 import { recebimentosDoMes } from './recebimentos'
@@ -14,8 +14,16 @@ export interface Compromisso {
   atrasado: boolean
 }
 
+export interface ItemDivida {
+  rotulo: string
+  detalhe: string
+  valor: number
+  quando: 'agora' | 'futuro'
+}
+
 export interface ResumoPessoal {
   dividaTotal: number
+  detalhesDivida: ItemDivida[]
   venceEsteMes: number
   parcelasFuturas: number
   pagoNoMes: number
@@ -33,7 +41,7 @@ export interface ResumoPessoal {
 
 export async function resumoPessoal(): Promise<ResumoPessoal> {
   const mes = mesAtual()
-  const [contasMes, contasAtrasadas, faturas, cartoes, pagamentosFatura, reembolsos, retiradas, gastos, recebimentos] = await Promise.all([
+  const [contasMes, contasAtrasadas, faturas, cartoes, pagamentosFatura, reembolsos, retiradas, gastos, recebimentos, contas] = await Promise.all([
     ocorrenciasDoMes(mes),
     atrasadasAnteriores(mes),
     listarFaturas(),
@@ -43,6 +51,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     db.retiradas.toArray(),
     db.gastos.toArray(),
     recebimentosDoMes(mes),
+    db.contas.toArray(),
   ])
 
   const compromissos: Compromisso[] = []
@@ -58,11 +67,15 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     })
   }
 
+  const detalhesDivida: ItemDivida[] = []
   let parcelasFuturas = 0
+  const futurasPorCartao = new Map<string, { valor: number; meses: number }>()
   for (const f of faturas) {
     if (f.paga) continue
     if (f.fatura > mes) {
       parcelasFuturas += f.total
+      const atual = futurasPorCartao.get(f.cartao.nome) ?? { valor: 0, meses: 0 }
+      futurasPorCartao.set(f.cartao.nome, { valor: atual.valor + f.total, meses: atual.meses + 1 })
       continue
     }
     compromissos.push({
@@ -74,6 +87,32 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
       atrasado: diasAte(f.vencimento) < 0,
     })
   }
+
+  // Contas fixas com número de parcelas (financiamento, empréstimo): as parcelas depois deste mês também são dívida.
+  for (const conta of contas) {
+    if (!conta.ativa || !conta.totalParcelas) continue
+    let valor = 0
+    let quantidade = 0
+    for (let m = conta.inicio > mes ? conta.inicio : somarMeses(mes, 1); quantidade < 600; m = somarMeses(m, 1)) {
+      if (!contaValeNoMes(conta, m)) break
+      valor += conta.valor
+      quantidade++
+    }
+    if (!quantidade) continue
+    parcelasFuturas += valor
+    detalhesDivida.push({ rotulo: conta.nome, detalhe: `${quantidade} parcela${quantidade > 1 ? 's' : ''} futura${quantidade > 1 ? 's' : ''} da conta fixa`, valor, quando: 'futuro' })
+  }
+  for (const [nome, { valor, meses }] of futurasPorCartao) {
+    detalhesDivida.push({ rotulo: `Cartão ${nome}`, detalhe: `parcelas em ${meses} fatura${meses > 1 ? 's' : ''} futura${meses > 1 ? 's' : ''}`, valor, quando: 'futuro' })
+  }
+  detalhesDivida.unshift(
+    ...compromissos.map((c) => ({
+      rotulo: c.nome,
+      detalhe: `${c.atrasado ? 'atrasada · venceu' : 'vence'} ${c.vencimento.slice(8, 10)}/${c.vencimento.slice(5, 7)}`,
+      valor: c.valor,
+      quando: 'agora' as const,
+    })),
+  )
 
   const venceEsteMes = compromissos.reduce((s, c) => s + c.valor, 0)
   const pagoNoMes =
@@ -99,6 +138,7 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
 
   return {
     dividaTotal: venceEsteMes + parcelasFuturas,
+    detalhesDivida,
     venceEsteMes,
     parcelasFuturas,
     pagoNoMes,

@@ -43,16 +43,13 @@ export function FormPlataforma({ plataforma, aoFechar, aoCriar }: { plataforma?:
   const [status, setStatus] = useState<StatusPlataforma>(plataforma?.status ?? 'ativa')
   const [observacoes, setObservacoes] = useState(plataforma?.observacoes ?? '')
   const [erro, setErro] = useState('')
-  const produtoEscolhido = produtoId ?? produtos[0]?.id
-
   async function salvar() {
     if (!nome.trim()) return setErro('Dê um nome para a plataforma.')
-    if (!produtoEscolhido) return setErro('Escolha o produto.')
     const registro: Plataforma = {
       ...(plataforma ?? {}),
       nome: nome.trim(),
       descricao: descricao.trim(),
-      produtoId: produtoEscolhido,
+      produtoId: produtoId || undefined,
       link: link.trim() || undefined,
       emailConta: emailConta.trim() || undefined,
       plano: plano.trim() || undefined,
@@ -81,11 +78,11 @@ export function FormPlataforma({ plataforma, aoFechar, aoCriar }: { plataforma?:
         <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Render" maxLength={40} autoFocus={!plataforma} />
       </Campo>
       <Campo rotulo="Para que serve">
-        <input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: API do PaintFlow" maxLength={80} />
+        <input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Hospedagem do site" maxLength={80} />
       </Campo>
-      <Campo rotulo="Produto">
-        <Opcoes rotulo="Produto" opcoes={produtos.map((p) => ({ valor: p.id!, rotulo: p.nome }))} valor={produtoEscolhido ?? 0} aoMudar={setProdutoId} />
-      </Campo>
+      {produtos.length > 0 && <Campo rotulo="Produto">
+        <Opcoes rotulo="Produto" opcoes={[{ valor: 0, rotulo: 'Geral' }, ...produtos.map((p) => ({ valor: p.id!, rotulo: p.nome }))]} valor={produtoId ?? 0} aoMudar={setProdutoId} />
+      </Campo>}
       <Campo rotulo="Status">
         <Opcoes
           rotulo="Status"
@@ -98,7 +95,7 @@ export function FormPlataforma({ plataforma, aoFechar, aoCriar }: { plataforma?:
         <input type="url" inputMode="url" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://" />
       </Campo>
       <Campo rotulo="E-mail da conta" dica="Não guarde senhas aqui: use um gerenciador de senhas.">
-        <input type="email" inputMode="email" value={emailConta} onChange={(e) => setEmailConta(e.target.value)} placeholder="lucas@valtaris.com.br" />
+        <input type="email" inputMode="email" value={emailConta} onChange={(e) => setEmailConta(e.target.value)} placeholder="contato@suaempresa.com.br" />
       </Campo>
       <Campo rotulo="Plano">
         <input value={plano} onChange={(e) => setPlano(e.target.value)} placeholder="Ex.: Free, Pro, Mail Lite…" maxLength={60} />
@@ -239,7 +236,7 @@ export function FormPagamento({ cobranca, nome, aoFechar }: { cobranca: Cobranca
       </Campo>
       <Interruptor rotulo="Pago por mim, a reembolsar" ligado={pagoPorMim} aoMudar={setPagoPorMim} />
       <Campo rotulo="Onde está o comprovante">
-        <input value={comprovante} onChange={(e) => setComprovante(e.target.value)} placeholder="Ex.: e-mail do Zoho, pasta Drive/Valtaris" maxLength={120} />
+        <input value={comprovante} onChange={(e) => setComprovante(e.target.value)} placeholder="Ex.: e-mail da plataforma, pasta no Drive" maxLength={120} />
       </Campo>
       {proxima && <p className="texto-suave">A próxima renovação passa para {formatarDia(proxima)}.</p>}
       {erro && <p className="aviso aviso-erro">{erro}</p>}
@@ -261,17 +258,15 @@ export function FormGastoEmpresa({ gasto, aoFechar }: { gasto?: GastoEmpresa; ao
   const [pagoPorMim, setPagoPorMim] = useState<boolean | undefined>(gasto?.pagoPorMim)
   const [comprovante, setComprovante] = useState(gasto?.comprovante ?? '')
   const [erro, setErro] = useState('')
-  const produtoEscolhido = produtoId ?? produtos[0]?.id
-
   async function salvar() {
     const valor = lerValor(textoValor)
     if (!valor || valor <= 0) return setErro('Informe o valor.')
-    if (!produtoEscolhido || !categoriaId) return setErro('Escolha o produto e a categoria.')
+    if (!categoriaId) return setErro('Escolha a categoria.')
     await db.gastosEmpresa.put({
       ...(gasto ?? {}),
       valor,
       descricao: descricao.trim() || 'Gasto',
-      produtoId: produtoEscolhido,
+      produtoId: produtoId || undefined,
       categoriaId,
       data,
       pagoPorMim: pagoPorMim ?? padrao,
@@ -289,9 +284,9 @@ export function FormGastoEmpresa({ gasto, aoFechar }: { gasto?: GastoEmpresa; ao
       <Campo rotulo="Descrição">
         <input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex.: Taxa da junta comercial" maxLength={60} />
       </Campo>
-      <Campo rotulo="Produto">
-        <Opcoes rotulo="Produto" opcoes={produtos.map((p) => ({ valor: p.id!, rotulo: p.nome }))} valor={produtoEscolhido ?? 0} aoMudar={setProdutoId} />
-      </Campo>
+      {produtos.length > 0 && <Campo rotulo="Produto">
+        <Opcoes rotulo="Produto" opcoes={[{ valor: 0, rotulo: 'Geral' }, ...produtos.map((p) => ({ valor: p.id!, rotulo: p.nome }))]} valor={produtoId ?? 0} aoMudar={setProdutoId} />
+      </Campo>}
       <Campo rotulo="Categoria">
         <SeletorCategoria modo="empresa" valor={categoriaId} aoMudar={setCategoriaId} />
       </Campo>

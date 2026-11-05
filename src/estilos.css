@@ -475,6 +475,14 @@ button.item:active { background: var(--superficie-2); }
 .grafico-coluna.atual .grafico-barra { background: var(--destaque); }
 .grafico-coluna.atual span { color: var(--texto); font-weight: 700; }
 
+/* Troca de modo deslizando */
+.conteudo { touch-action: pan-y; }
+.entrar-pela-direita { animation: entrarDireita 0.22s ease-out; }
+.entrar-pela-esquerda { animation: entrarEsquerda 0.22s ease-out; }
+@keyframes entrarDireita { from { transform: translateX(40px); opacity: 0.3; } }
+@keyframes entrarEsquerda { from { transform: translateX(-40px); opacity: 0.3; } }
+.clicavel { cursor: pointer; }
+
 /* Busca */
 .campo-busca { flex: 1; min-width: 0; padding: 11px 14px; border: 1px solid var(--borda); border-radius: 999px; background: var(--superficie); color: var(--texto); font: inherit; font-size: 1rem; }
 .campo-busca:focus { outline: 2px solid var(--destaque); outline-offset: 1px; }

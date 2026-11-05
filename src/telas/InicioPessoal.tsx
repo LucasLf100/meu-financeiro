@@ -1,9 +1,10 @@
+import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { formatarReais } from '../dinheiro'
 import { formatarDiaCurto, mesAtual, MESES, nomeMesCurto, prazo } from '../datas'
 import { resumoPessoal, type Compromisso } from '../regras/resumo'
 import { AvisoBackup } from '../componentes/AvisoBackup'
-import { BarraProgresso } from '../componentes/ui'
+import { BarraProgresso, Folha } from '../componentes/ui'
 import type { Aba } from '../componentes/BarraInferior'
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
 export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoIrParaEmpresa, aoIrParaRecebimentos }: Props) {
   const r = useLiveQuery(resumoPessoal)
   const mes = mesAtual()
+  const [verDetalhes, setVerDetalhes] = useState(false)
 
   if (!r) return null
   const totalDoMes = r.pagoNoMes + r.venceEsteMes
@@ -26,8 +28,8 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
     <div className="tela">
       <AvisoBackup aoAbrirAjustes={aoAbrirAjustes} />
 
-      <section className="cartao-destaque">
-        <span className="rotulo">Dívida total</span>
+      <section className="cartao-destaque clicavel" onClick={() => setVerDetalhes(true)} role="button" tabIndex={0} aria-label="Ver como a dívida é calculada">
+        <span className="rotulo">Dívida total · toque para ver o detalhe</span>
         <strong className="valor-grande">{formatarReais(r.dividaTotal)}</strong>
         <div className="divisao">
           <div>
@@ -46,6 +48,45 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
           </div>
         )}
       </section>
+
+      {verDetalhes && (
+        <Folha titulo="Como a dívida é calculada" aoFechar={() => setVerDetalhes(false)}>
+          <p className="texto-suave">
+            Entra o que ainda não foi pago: contas fixas deste mês (e atrasadas), faturas de cartão e parcelas futuras
+            (do cartão e de contas fixas com número de parcelas). Contas já marcadas como pagas e gastos no débito, Pix ou dinheiro não entram.
+          </p>
+          {(['agora', 'futuro'] as const).map((quando) => {
+            const itens = r.detalhesDivida.filter((d) => d.quando === quando)
+            const total = itens.reduce((s, d) => s + d.valor, 0)
+            return (
+              <section key={quando} className="grupo">
+                <h3 className="grupo-titulo">
+                  <span>{quando === 'agora' ? `Vence em ${MESES[Number(mes.slice(5, 7)) - 1]}` : 'Parcelas futuras'}</span>
+                  <span>{formatarReais(total)}</span>
+                </h3>
+                {itens.length === 0 ? (
+                  <p className="texto-suave">Nada aqui.</p>
+                ) : (
+                  <div className="lista">
+                    {itens.map((d, i) => (
+                      <div key={i} className="item item-estatico">
+                        <span className="item-texto">
+                          <strong>{d.rotulo}</strong>
+                          <small>{d.detalhe}</small>
+                        </span>
+                        <strong className="item-valor">{formatarReais(d.valor)}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )
+          })}
+          <p className="texto-suave">
+            Cadastrou uma conta e ela não aparece? Confira na aba Contas se ela começa neste mês e se não está marcada como paga.
+          </p>
+        </Folha>
+      )}
 
       <section className="bloco">
         <div className="linha-resumo">
@@ -122,7 +163,7 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
         </div>
         {r.aReceberEmpresa > 0 && (
           <div className="linha-resumo">
-            <span>A receber da Valtaris</span>
+            <span>A receber da empresa</span>
             <button className="botao-link" onClick={aoIrParaEmpresa}>{formatarReais(r.aReceberEmpresa)}</button>
           </div>
         )}

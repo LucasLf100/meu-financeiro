@@ -98,7 +98,7 @@ export interface Plataforma {
   id?: number
   nome: string
   descricao: string
-  produtoId: number
+  produtoId?: number // vazio = empresa em geral
   link?: string
   emailConta?: string
   plano?: string
@@ -136,7 +136,7 @@ export interface GastoEmpresa {
   id?: number
   valor: number
   descricao: string
-  produtoId: number
+  produtoId?: number // vazio = empresa em geral
   categoriaId: number
   data: string
   pagoPorMim: boolean

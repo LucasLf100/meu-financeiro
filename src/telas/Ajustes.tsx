@@ -1,12 +1,55 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { lerConfig, salvarConfig } from '../db'
+import { db, lerConfig, salvarConfig } from '../db'
 import { exportarBackup, lerBackup, restaurarBackup, contarRegistros, type ArquivoBackup } from '../backup'
 import { lerValor } from '../dinheiro'
 import { Categorias } from './Categorias'
+import { Produtos } from './Produtos'
 import { SeloValtaris } from '../componentes/Selo'
 import { Interruptor, Opcoes, mascararValor } from '../componentes/ui'
 import { lerTema, salvarTema, type Tema } from '../tema'
+
+/** Apaga tudo do modo Empresa (plataformas, cobranças, pagamentos, gastos, retiradas e produtos). O modo Pessoal não muda. */
+function ApagarEmpresa({ aoApagar }: { aoApagar: () => void }) {
+  const [confirmando, setConfirmando] = useState(false)
+  const total = useLiveQuery(
+    async () => (await db.plataformas.count()) + (await db.gastosEmpresa.count()) + (await db.retiradas.count()) + (await db.produtos.count()),
+    [],
+    0,
+  )
+  if (!total) return null
+
+  async function apagar() {
+    await db.transaction('rw', [db.plataformas, db.cobrancas, db.pagamentosCobranca, db.gastosEmpresa, db.retiradas, db.produtos], async () => {
+      await Promise.all([
+        db.plataformas.clear(),
+        db.cobrancas.clear(),
+        db.pagamentosCobranca.clear(),
+        db.gastosEmpresa.clear(),
+        db.retiradas.clear(),
+        db.produtos.clear(),
+      ])
+    })
+    setConfirmando(false)
+    aoApagar()
+  }
+
+  if (!confirmando) {
+    return <button className="botao botao-texto-perigo" onClick={() => setConfirmando(true)}>Apagar todos os dados da Empresa</button>
+  }
+  return (
+    <div className="confirmacao">
+      <p>
+        Apagar <strong>todas</strong> as plataformas, cobranças, pagamentos, gastos, retiradas e produtos da Empresa?
+        O modo Pessoal não muda. Se quiser guardar uma cópia, salve um backup antes.
+      </p>
+      <div className="linha-campos">
+        <button className="botao" onClick={() => setConfirmando(false)}>Cancelar</button>
+        <button className="botao botao-perigo" onClick={apagar}>Apagar</button>
+      </div>
+    </div>
+  )
+}
 
 function formatarData(iso: string | null): string {
   if (!iso) return 'nunca'
@@ -132,10 +175,12 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
             <h2>Empresa</h2>
             <Interruptor
               rotulo="Marcar “pago por mim” por padrão"
-              dica="Deixe ligado enquanto a Valtaris não tiver CNPJ e conta própria."
+              dica="Deixe ligado enquanto a empresa não tiver CNPJ e conta própria."
               ligado={pagoPorMimPadrao}
               aoMudar={(v) => salvarConfig('pagoPorMimPadrao', v)}
             />
+            <Produtos />
+            <ApagarEmpresa aoApagar={() => setMensagem({ tipo: 'ok', texto: 'Dados da Empresa apagados. O modo Empresa está vazio.' })} />
           </section>
 
           <section className="bloco">

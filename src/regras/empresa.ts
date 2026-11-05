@@ -166,7 +166,8 @@ export async function resumoEmpresa(): Promise<ResumoEmpresa> {
     if (!plataformaConta(plataforma)) continue
     const valor = custoMensal(c, pagamentos, cotacao)
     total += valor
-    porProduto.set(plataforma!.produtoId, (porProduto.get(plataforma!.produtoId) ?? 0) + valor)
+    const chave = plataforma!.produtoId ?? 0
+    porProduto.set(chave, (porProduto.get(chave) ?? 0) + valor)
   }
 
   const gastoDoMes =
@@ -187,7 +188,12 @@ export async function resumoEmpresa(): Promise<ResumoEmpresa> {
     custoMensal: total,
     gastoDoMes,
     aReembolsar: reembolsos.reduce((s, r) => s + r.valor, 0),
-    porProduto: produtos.map((p) => ({ id: p.id!, nome: p.nome, cor: p.cor, valor: porProduto.get(p.id!) ?? 0 })),
+    porProduto: produtos.length
+      ? [
+          ...produtos.map((p) => ({ id: p.id!, nome: p.nome, cor: p.cor, valor: porProduto.get(p.id!) ?? 0 })),
+          ...(porProduto.get(0) ? [{ id: 0, nome: 'Geral', cor: '#64748b', valor: porProduto.get(0)! }] : []),
+        ]
+      : [],
     usoAcimaDoLimite,
   }
 }

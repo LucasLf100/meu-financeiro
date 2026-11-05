@@ -82,7 +82,7 @@ export function InicioEmpresa({ aoAbrirAjustes }: { aoAbrirAjustes: () => void }
         )}
       </section>
 
-      <section className="bloco">
+      {resumo.porProduto.length > 0 && <section className="bloco">
         <h2>Custo por produto</h2>
         {resumo.porProduto.map((p) => (
           <div key={p.id} className="linha-categoria">
@@ -91,7 +91,7 @@ export function InicioEmpresa({ aoAbrirAjustes }: { aoAbrirAjustes: () => void }
             <BarraProgresso valor={p.valor} total={maiorProduto} />
           </div>
         ))}
-      </section>
+      </section>}
 
       <section className="bloco">
         <div className="linha-resumo">
