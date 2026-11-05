@@ -38,11 +38,11 @@ export async function gerarParcelas(gasto: Gasto & { id: number }): Promise<void
   const total = Math.max(1, gasto.parcelas ?? 1)
   const primeira = faturaDaCompra(cartao, gasto.data)
   const valores = dividirParcelas(gasto.valor, total)
-  // Fatura já paga (paga antes de fechar, por exemplo) não recebe parcela nova: vai para a seguinte.
-  const faturas = distribuir(
-    valores.map((_, i) => somarMeses(primeira, i)),
-    await faturasPagas(cartao.id!),
-  )
+  // Cada parcela vai para a fatura certa pela data. Se alguma já estava marcada como paga,
+  // ela volta a ficar em aberto (o valor dela mudou e precisa ser pago de novo).
+  const faturas = valores.map((_, i) => somarMeses(primeira, i))
+  const pagas = await faturasPagas(cartao.id!)
+  for (const fatura of new Set(faturas)) if (pagas.has(fatura)) await desfazerPagamentoFatura(cartao.id!, fatura)
   const parcelas: Parcela[] = valores.map((valor, i) => ({
     gastoId: gasto.id,
     cartaoId: cartao.id!,

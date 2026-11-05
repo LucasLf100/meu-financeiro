@@ -31,6 +31,11 @@ export function FormGasto({ gasto, aoFechar }: { gasto?: Gasto; aoFechar: () => 
   const cartaoEscolhido = cartoes.find((c) => c.id === (cartaoId ?? cartoes[0]?.id))
   const valor = lerValor(textoValor)
 
+  const faturasPagasDoCartao = useLiveQuery(
+    async () => (cartaoEscolhido?.id ? (await db.pagamentosFatura.where({ cartaoId: cartaoEscolhido.id }).toArray()).map((p) => p.fatura) : []),
+    [cartaoEscolhido?.id],
+    [] as string[],
+  )
   const previaCredito = useMemo(() => {
     if (forma !== 'credito' || !cartaoEscolhido || !valor || valor <= 0) return null
     const fatura = faturaDaCompra(cartaoEscolhido, data)
@@ -57,7 +62,7 @@ export function FormGasto({ gasto, aoFechar }: { gasto?: Gasto; aoFechar: () => 
       const problema = await validarEdicaoGasto(gasto as Gasto & { id: number }, registro)
       if (problema) return setErro(problema)
     }
-    await db.transaction('rw', [db.gastos, db.parcelas, db.cartoes, db.pagamentosFatura], async () => {
+    await db.transaction('rw', [db.gastos, db.parcelas, db.cartoes, db.pagamentosFatura, db.pagamentosConta], async () => {
       const id = await db.gastos.put(registro)
       await atualizarParcelas({ ...registro, id: id as number }, gasto)
     })
@@ -121,6 +126,11 @@ export function FormGasto({ gasto, aoFechar }: { gasto?: Gasto; aoFechar: () => 
         <p className="texto-suave">
           {parcelas > 1 ? `${parcelas}x de ${formatarReais(previaCredito.parcela)}, ` : ''}
           começando na fatura de {nomeMes(previaCredito.fatura)}. Soma na dívida.
+        </p>
+      )}
+      {previaCredito && faturasPagasDoCartao.includes(previaCredito.fatura) && (
+        <p className="aviso aviso-alerta">
+          A fatura de {nomeMes(previaCredito.fatura)} está marcada como paga. Ao salvar, ela volta a ficar em aberto para você pagar o valor novo.
         </p>
       )}
 
