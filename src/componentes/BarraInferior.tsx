@@ -1,6 +1,6 @@
 import type { Modo } from '../db'
 
-export type Aba = 'inicio' | 'gastos' | 'contas' | 'cartoes' | 'plataformas' | 'cobrancas' | 'retiradas'
+export type Aba = 'inicio' | 'gastos' | 'contas' | 'cartoes' | 'plataformas' | 'saidas' | 'entradas'
 
 interface DefAba {
   id: Aba
@@ -15,8 +15,8 @@ const I = {
   contas: 'M4 5h16v15H4zM4 9h16M8 3v4M16 3v4',
   cartoes: 'M3 6h18v12H3zM3 10h18M7 15h4',
   plataformas: 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z',
-  cobrancas: 'M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4',
-  retiradas: 'M12 3v12M7 10l5 5 5-5M4 21h16',
+  saidas: 'M12 20V8M7 13l5-5 5 5M4 4h16',
+  entradas: 'M12 4v12M7 11l5 5 5-5M4 20h16',
 }
 
 export const ABAS: Record<Modo, DefAba[]> = {
@@ -28,9 +28,9 @@ export const ABAS: Record<Modo, DefAba[]> = {
   ],
   empresa: [
     { id: 'inicio', rotulo: 'Início', icone: I.inicio, etapa: 6 },
+    { id: 'saidas', rotulo: 'Saídas', icone: I.saidas, etapa: 6 },
+    { id: 'entradas', rotulo: 'Entradas', icone: I.entradas, etapa: 6 },
     { id: 'plataformas', rotulo: 'Plataformas', icone: I.plataformas, etapa: 6 },
-    { id: 'cobrancas', rotulo: 'Cobranças', icone: I.cobrancas, etapa: 6 },
-    { id: 'retiradas', rotulo: 'Retiradas', icone: I.retiradas, etapa: 6 },
   ],
 }
 

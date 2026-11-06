@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, lerConfig, type Cobranca, type GastoEmpresa, type Plataforma, type Retirada, type StatusPlataforma, type TipoCobranca } from '../../db'
+import { db, lerConfig, type Cobranca, type GastoEmpresa, type OrigemPagamento, type Plataforma, type Retirada, type StatusPlataforma, type TipoCobranca } from '../../db'
 import { formatarReais, lerValor } from '../../dinheiro'
 import { formatarDia, hoje } from '../../datas'
-import { emReais, lerCotacao, proximaData, registrarPagamento } from '../../regras/empresa'
+import { emReais, lerCotacao, proximaData } from '../../regras/empresa'
+import { apagarGastoEmpresa, ORIGENS, origemDe, registrarPagamentoCobranca, salvarGastoEmpresa } from '../../regras/empresaMes'
 import { Campo, Folha, Interruptor, Opcoes, valorParaTexto, mascararValor } from '../../componentes/ui'
 import { SeletorCategoria } from '../../componentes/SeletorCategoria'
 import { NOME_STATUS, NOME_TIPO } from './comum'
@@ -14,6 +15,48 @@ function useProdutos() {
 
 function usePagoPorMimPadrao() {
   return useLiveQuery(() => lerConfig<boolean>('pagoPorMimPadrao', true), [], true)
+}
+
+function useOrigemPadrao(): OrigemPagamento {
+  const padrao = usePagoPorMimPadrao()
+  return padrao ? 'bolso' : 'caixa'
+}
+
+/** "De onde saiu o dinheiro": caixa, cartão da empresa, meu bolso ou meu cartão (entra na fatura). */
+export function SeletorOrigem({ origem, aoMudar, cartaoId, aoMudarCartao }: {
+  origem: OrigemPagamento
+  aoMudar: (o: OrigemPagamento) => void
+  cartaoId?: number
+  aoMudarCartao: (id: number) => void
+}) {
+  const cartoes = useLiveQuery(() => db.cartoes.where({ ativo: 1 }).toArray(), [], [])
+  const atual = ORIGENS.find((o) => o.valor === origem)!
+  // Sem cartão escolhido, usa o primeiro ativo.
+  const cartaoValido = cartoes.find((c) => c.id === cartaoId)?.id ?? cartoes[0]?.id
+  useEffect(() => {
+    if (origem === 'cartao-pessoal' && cartaoValido && cartaoValido !== cartaoId) aoMudarCartao(cartaoValido)
+  }, [origem, cartaoValido, cartaoId, aoMudarCartao])
+  return (
+    <>
+      <Campo rotulo="De onde saiu o dinheiro" dica={atual.dica}>
+        <div className="origens" role="radiogroup" aria-label="De onde saiu o dinheiro">
+          {ORIGENS.map((o) => (
+            <button key={o.valor} type="button" role="radio" aria-checked={origem === o.valor} className={origem === o.valor ? 'origem ativa' : 'origem'} onClick={() => aoMudar(o.valor)}>
+              <span className="origem-icone">{o.icone}</span>
+              <span>{o.rotulo}</span>
+            </button>
+          ))}
+        </div>
+      </Campo>
+      {origem === 'cartao-pessoal' && (
+        cartoes.length ? (
+          <Campo rotulo="Qual cartão" dica="Entra como compra à vista na fatura desse cartão.">
+            <Opcoes rotulo="Cartão" opcoes={cartoes.map((c) => ({ valor: c.id!, rotulo: c.nome }))} valor={cartaoValido ?? 0} aoMudar={aoMudarCartao} />
+          </Campo>
+        ) : <p className="aviso aviso-erro">Cadastre um cartão no Pessoal primeiro.</p>
+      )}
+    </>
+  )
 }
 
 function Confirmacao({ texto, rotulo, aoConfirmar }: { texto: string; rotulo: string; aoConfirmar: () => void }) {
@@ -198,7 +241,8 @@ export function FormPagamento({ cobranca, nome, aoFechar }: { cobranca: Cobranca
   const [textoOriginal, setTextoOriginal] = useState(cobranca.moeda === 'USD' ? valorParaTexto(sugestao) : '')
   const [textoReais, setTextoReais] = useState<string | null>(cobranca.moeda === 'BRL' ? valorParaTexto(sugestao) : null)
   const [data, setData] = useState(hoje())
-  const [pagoPorMim, setPagoPorMim] = useState(cobranca.pagoPorMim)
+  const [origem, setOrigem] = useState<OrigemPagamento>(cobranca.pagoPorMim ? 'bolso' : 'caixa')
+  const [cartaoId, setCartaoId] = useState<number | undefined>()
   const [comprovante, setComprovante] = useState('')
   const [erro, setErro] = useState('')
 
@@ -211,11 +255,13 @@ export function FormPagamento({ cobranca, nome, aoFechar }: { cobranca: Cobranca
   async function salvar() {
     const valor = lerValor(textoReaisFinal)
     if (!valor || valor <= 0) return setErro('Informe o valor pago em reais.')
-    await registrarPagamento(cobranca, {
+    if (origem === 'cartao-pessoal' && !cartaoId) return setErro('Escolha o cartão.')
+    await registrarPagamentoCobranca(cobranca, nome, {
       valor,
       valorOriginal: dolares ?? undefined,
       pagoEm: data,
-      pagoPorMim,
+      origem,
+      cartaoId,
       comprovante: comprovante.trim() || undefined,
     })
     aoFechar()
@@ -234,7 +280,7 @@ export function FormPagamento({ cobranca, nome, aoFechar }: { cobranca: Cobranca
       <Campo rotulo="Data do pagamento">
         <input type="date" value={data} onChange={(e) => e.target.value && setData(e.target.value)} />
       </Campo>
-      <Interruptor rotulo="Pago por mim, a reembolsar" ligado={pagoPorMim} aoMudar={setPagoPorMim} />
+      <SeletorOrigem origem={origem} aoMudar={setOrigem} cartaoId={cartaoId} aoMudarCartao={setCartaoId} />
       <Campo rotulo="Onde está o comprovante">
         <input value={comprovante} onChange={(e) => setComprovante(e.target.value)} placeholder="Ex.: e-mail da plataforma, pasta no Drive" maxLength={120} />
       </Campo>
@@ -249,29 +295,32 @@ export function FormPagamento({ cobranca, nome, aoFechar }: { cobranca: Cobranca
 
 export function FormGastoEmpresa({ gasto, aoFechar }: { gasto?: GastoEmpresa; aoFechar: () => void }) {
   const produtos = useProdutos()
-  const padrao = usePagoPorMimPadrao()
+  const padrao = useOrigemPadrao()
   const [textoValor, setTextoValor] = useState(valorParaTexto(gasto?.valor))
   const [descricao, setDescricao] = useState(gasto?.descricao ?? '')
   const [produtoId, setProdutoId] = useState<number | undefined>(gasto?.produtoId)
   const [categoriaId, setCategoriaId] = useState<number | undefined>(gasto?.categoriaId)
   const [data, setData] = useState(gasto?.data ?? hoje())
-  const [pagoPorMim, setPagoPorMim] = useState<boolean | undefined>(gasto?.pagoPorMim)
+  const [origemEscolhida, setOrigem] = useState<OrigemPagamento | undefined>(gasto ? origemDe(gasto) : undefined)
+  const origem = origemEscolhida ?? padrao
+  const [cartaoId, setCartaoId] = useState<number | undefined>(gasto?.cartaoId)
   const [comprovante, setComprovante] = useState(gasto?.comprovante ?? '')
   const [erro, setErro] = useState('')
   async function salvar() {
     const valor = lerValor(textoValor)
     if (!valor || valor <= 0) return setErro('Informe o valor.')
     if (!categoriaId) return setErro('Escolha a categoria.')
-    await db.gastosEmpresa.put({
+    if (origem === 'cartao-pessoal' && !cartaoId) return setErro('Escolha o cartão.')
+    await salvarGastoEmpresa({
       ...(gasto ?? {}),
       valor,
       descricao: descricao.trim() || 'Gasto',
       produtoId: produtoId || undefined,
       categoriaId,
       data,
-      pagoPorMim: pagoPorMim ?? padrao,
+      pagoPorMim: false,
       comprovante: comprovante.trim() || undefined,
-    })
+    }, origem, cartaoId)
     aoFechar()
   }
 
@@ -293,7 +342,7 @@ export function FormGastoEmpresa({ gasto, aoFechar }: { gasto?: GastoEmpresa; ao
       <Campo rotulo="Data">
         <input type="date" value={data} onChange={(e) => e.target.value && setData(e.target.value)} />
       </Campo>
-      <Interruptor rotulo="Pago por mim, a reembolsar" ligado={pagoPorMim ?? padrao} aoMudar={setPagoPorMim} />
+      <SeletorOrigem origem={origem} aoMudar={setOrigem} cartaoId={cartaoId} aoMudarCartao={setCartaoId} />
       <Campo rotulo="Onde está o comprovante">
         <input value={comprovante} onChange={(e) => setComprovante(e.target.value)} maxLength={120} />
       </Campo>
@@ -303,7 +352,7 @@ export function FormGastoEmpresa({ gasto, aoFechar }: { gasto?: GastoEmpresa; ao
         <Confirmacao
           rotulo="Excluir gasto"
           texto={`Excluir “${gasto.descricao}” de ${formatarReais(gasto.valor)}?`}
-          aoConfirmar={async () => { await db.gastosEmpresa.delete(gasto.id!); aoFechar() }}
+          aoConfirmar={async () => { await apagarGastoEmpresa(gasto); aoFechar() }}
         />
       )}
     </Folha>

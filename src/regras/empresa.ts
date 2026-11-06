@@ -161,9 +161,10 @@ export async function empresaNoBolso(mes = mesAtual()): Promise<EmpresaNoBolso> 
     db.gastosEmpresa.toArray(),
     lerCotacao(),
   ])
+  // Pago no meu cartão pessoal já está na fatura do cartão: não conta de novo aqui.
   const pago =
-    pagamentos.filter((p) => p.pagoPorMim && mesDe(p.pagoEm) === mes).reduce((s, p) => s + p.valor, 0) +
-    gastos.filter((g) => g.pagoPorMim && mesDe(g.data) === mes).reduce((s, g) => s + g.valor, 0)
+    pagamentos.filter((p) => p.pagoPorMim && p.origem !== 'cartao-pessoal' && mesDe(p.pagoEm) === mes).reduce((s, p) => s + p.valor, 0) +
+    gastos.filter((g) => g.pagoPorMim && g.origem !== 'cartao-pessoal' && mesDe(g.data) === mes).reduce((s, g) => s + g.valor, 0)
 
   let falta = 0
   const recorrentes: EmpresaNoBolso['recorrentes'] = []

@@ -5,9 +5,11 @@ import {
   type AjusteConta,
   type Cartao,
   type Categoria,
+  type ClienteEmpresa,
   type Cobranca,
   type ContaFixa,
   type Entrada,
+  type EntradaEmpresa,
   type Gasto,
   type GastoEmpresa,
   type PagamentoConta,
@@ -49,6 +51,7 @@ export async function adicionarBackup(backup: ArquivoBackup): Promise<ResultadoI
     db.categorias, db.produtos, db.cartoes, db.contas, db.recebimentos, db.plataformas, db.cobrancas,
     db.gastos, db.parcelas, db.pagamentosFatura, db.pagamentosConta, db.ajustesConta,
     db.pagamentosCobranca, db.gastosEmpresa, db.retiradas, db.entradas,
+    db.clientes, db.entradasEmpresa,
   ]
 
   await db.transaction('rw', tabelas, async () => {
@@ -177,14 +180,18 @@ export async function adicionarBackup(backup: ArquivoBackup): Promise<ResultadoI
       const igual = await db.pagamentosCobranca.where({ cobrancaId }).filter((x) => x.pagoEm === p.pagoEm && x.valor === p.valor).count()
       if (igual) { repetido(); continue }
       const { id: _id, ...resto } = p
-      await db.pagamentosCobranca.add({ ...resto, cobrancaId }); novo()
+      const cartaoId = resto.cartaoId !== undefined ? mCartao.get(resto.cartaoId) : undefined
+      const gastoPessoalId = resto.gastoPessoalId !== undefined ? mGasto.get(resto.gastoPessoalId) : undefined
+      await db.pagamentosCobranca.add({ ...resto, cobrancaId, cartaoId, gastoPessoalId }); novo()
     }
 
     const gastosEmpresa = await db.gastosEmpresa.toArray()
     for (const g of linhas<GastoEmpresa>(backup, 'gastosEmpresa')) {
       if (gastosEmpresa.some((x) => x.data === g.data && x.valor === g.valor && chave(x.descricao) === chave(g.descricao))) { repetido(); continue }
       const { id: _id, ...resto } = g
-      await db.gastosEmpresa.add({ ...resto, produtoId: produto(resto.produtoId), categoriaId: await categoria(resto.categoriaId, 'empresa') }); novo()
+      const cartaoId = resto.cartaoId !== undefined ? mCartao.get(resto.cartaoId) : undefined
+      const gastoPessoalId = resto.gastoPessoalId !== undefined ? mGasto.get(resto.gastoPessoalId) : undefined
+      await db.gastosEmpresa.add({ ...resto, cartaoId, gastoPessoalId, produtoId: produto(resto.produtoId), categoriaId: await categoria(resto.categoriaId, 'empresa') }); novo()
     }
 
     const retiradas = await db.retiradas.toArray()
@@ -203,6 +210,26 @@ export async function adicionarBackup(backup: ArquivoBackup): Promise<ResultadoI
       if (igual) { repetido(); continue }
       const { id: _id, ...resto } = e
       await db.entradas.add({ ...resto, recebimentoId }); novo()
+    }
+
+    const mCliente = new Map<number, number>()
+    const clientes = await db.clientes.toArray()
+    for (const c of linhas<ClienteEmpresa>(backup, 'clientes')) {
+      const existente = clientes.find((x) => chave(x.nome) === chave(c.nome))
+      if (existente) { mCliente.set(c.id!, existente.id!); repetido(); continue }
+      const { id, ...resto } = c
+      mCliente.set(id!, (await db.clientes.add({ ...resto, produtoId: produto(resto.produtoId) })) as number); novo()
+    }
+
+    const entradasEmpresa = await db.entradasEmpresa.toArray()
+    for (const e of linhas<EntradaEmpresa>(backup, 'entradasEmpresa')) {
+      const clienteId = e.clienteId !== undefined ? mCliente.get(e.clienteId) : undefined
+      const igual = clienteId
+        ? entradasEmpresa.some((x) => x.clienteId === clienteId && x.competencia === e.competencia)
+        : entradasEmpresa.some((x) => !x.clienteId && x.data === e.data && x.valor === e.valor && chave(x.descricao) === chave(e.descricao))
+      if (igual) { repetido(); continue }
+      const { id: _id, ...resto } = e
+      await db.entradasEmpresa.add({ ...resto, clienteId, produtoId: produto(resto.produtoId) }); novo()
     }
   })
 

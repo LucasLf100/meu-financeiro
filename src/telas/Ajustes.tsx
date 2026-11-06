@@ -8,7 +8,37 @@ import { Produtos } from './Produtos'
 import { adicionarBackup, contarParaAdicionar } from '../importar'
 import { SeloValtaris } from '../componentes/Selo'
 import { Interruptor, Opcoes, mascararValor } from '../componentes/ui'
-import { lerTema, salvarTema, type Tema } from '../tema'
+import { lerPaleta, lerTema, PALETAS, salvarPaleta, salvarTema, type ModoCor, type Tema } from '../tema'
+
+/** Grade de paletas: cada uma mostra o degradê do cartão principal. */
+function EscolhaCores({ modo, titulo }: { modo: ModoCor; titulo: string }) {
+  const [escolhida, setEscolhida] = useState(lerPaleta(modo).id)
+  const escuro = document.documentElement.dataset.tema === 'escuro'
+  return (
+    <div className="grupo">
+      <span className="rotulo">{titulo}</span>
+      <div className="paletas">
+        {PALETAS[modo].map((p) => {
+          const tom = escuro ? p.escuro : p.claro
+          return (
+            <button
+              key={p.id}
+              type="button"
+              className={`paleta ${escolhida === p.id ? 'ativa' : ''}`}
+              onClick={() => { setEscolhida(p.id); salvarPaleta(modo, p.id) }}
+              aria-pressed={escolhida === p.id}
+            >
+              <span className="paleta-amostra" style={{ background: `linear-gradient(135deg, ${tom.grad1}, ${tom.grad2})` }}>
+                <span style={{ background: tom.destaque }} />
+              </span>
+              <span className="paleta-nome">{p.nome}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 /** Apaga tudo do modo Empresa (plataformas, cobranças, pagamentos, gastos, retiradas e produtos). O modo Pessoal não muda. */
 function ApagarEmpresa({ aoApagar }: { aoApagar: () => void }) {
@@ -190,6 +220,8 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
               valor={tema}
               aoMudar={(t) => { setTema(t); salvarTema(t) }}
             />
+            <EscolhaCores modo="pessoal" titulo="Cores do Pessoal" />
+            <EscolhaCores modo="empresa" titulo="Cores da Empresa" />
           </section>
 
           <Categorias />

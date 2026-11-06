@@ -8,6 +8,8 @@ import { pedirArmazenamentoPersistente } from './backup'
 import { aplicarTema } from './tema'
 import './estilos.css'
 
+// Já marca o modo salvo antes de desenhar, para as cores certas aparecerem de primeira.
+document.documentElement.dataset.modo = localStorage.getItem('mf-modo') === 'empresa' ? 'empresa' : 'pessoal'
 aplicarTema()
 
 // Deixa o app pronto para funcionar offline e se atualizar sozinho.

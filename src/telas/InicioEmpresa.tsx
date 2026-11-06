@@ -1,55 +1,76 @@
 import { useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, type GastoEmpresa } from '../db'
+import { db } from '../db'
 import { formatarReais } from '../dinheiro'
-import { formatarDia, formatarDiaCurto, mesAtual, prazo } from '../datas'
+import { formatarDia, formatarDiaCurto, hoje, mesAtual, mesDe, nomeMes, nomeMesCurto, prazo, somarDias, somarMeses } from '../datas'
 import { marcarReembolsado, proximasRenovacoes, reembolsosPendentes, resumoEmpresa, type ItemReembolso } from '../regras/empresa'
+import { entradasEmpresaDoMes, resultadoEmpresa } from '../regras/empresaMes'
 import { AvisoBackup } from '../componentes/AvisoBackup'
-import { BarraProgresso, Etiqueta } from '../componentes/ui'
-import { FormGastoEmpresa } from './empresa/Formularios'
+import { BarraProgresso, Etiqueta, Folha } from '../componentes/ui'
 import { DetalhePlataforma } from './empresa/Plataformas'
+import { Retiradas } from './empresa/Retiradas'
 
-export function InicioEmpresa({ aoAbrirAjustes }: { aoAbrirAjustes: () => void }) {
+export function InicioEmpresa({ aoAbrirAjustes, aoIrPara }: { aoAbrirAjustes: () => void; aoIrPara: (aba: 'saidas' | 'entradas') => void }) {
   const dados = useLiveQuery(async () => {
     const mes = mesAtual()
-    const [resumo, renovacoes, reembolsos, gastos, categorias] = await Promise.all([
+    const meses = Array.from({ length: 6 }, (_, i) => somarMeses(mes, i - 5))
+    const [resultado, resumo, renovacoes, reembolsos, retiradas, historico] = await Promise.all([
+      resultadoEmpresa(mes),
       resumoEmpresa(),
-      proximasRenovacoes(60),
+      proximasRenovacoes(30),
       reembolsosPendentes(),
-      db.gastosEmpresa.where('data').between(`${mes}-01`, `${mes}-31`, true, true).reverse().sortBy('data'),
-      db.categorias.where({ modo: 'empresa' }).toArray(),
+      db.retiradas.toArray(),
+      Promise.all(meses.map(async (m) => {
+        const r = await resultadoEmpresa(m)
+        return { mes: m, entrou: r.entradas.recebido, saiu: r.saidas.totalPago }
+      })),
     ])
-    return { resumo, renovacoes, reembolsos, gastos, categorias }
+    // Clientes que ainda vão pagar neste mês e no próximo (próximos 30 dias).
+    const proximo = await entradasEmpresaDoMes(somarMeses(mes, 1))
+    const aReceber = [...resultado.entradas.recorrentes, ...proximo.recorrentes]
+      .filter((o) => !o.entrada)
+      .filter((o) => o.data <= somarDias(hoje(), 30))
+    const retiradoNoMes = retiradas.filter((r) => mesDe(r.data) === mes).reduce((s, r) => s + r.valor, 0)
+    return { mes, resultado, resumo, renovacoes, reembolsos, retiradoNoMes, historico, aReceber }
   })
   const [plataformaAberta, setPlataformaAberta] = useState<number | null>(null)
-  const [gastoAberto, setGastoAberto] = useState<GastoEmpresa | null>(null)
   const [confirmandoTodos, setConfirmandoTodos] = useState(false)
+  const [verRetiradas, setVerRetiradas] = useState(false)
 
   if (!dados) return null
-  const { resumo, renovacoes, reembolsos, gastos, categorias } = dados
+  const { mes, resultado, resumo, renovacoes, reembolsos, retiradoNoMes, historico, aReceber } = dados
+  const lucro = resultado.resultado >= 0
   const maiorProduto = Math.max(1, ...resumo.porProduto.map((p) => p.valor))
+  const maiorBarra = Math.max(1, ...historico.flatMap((h) => [h.entrou, h.saiu]))
+  const temHistorico = historico.some((h) => h.entrou || h.saiu)
 
   async function reembolsar(itens: ItemReembolso[]) {
     await marcarReembolsado(itens)
     setConfirmandoTodos(false)
   }
 
+  const proximos = [
+    ...renovacoes.map((r) => ({ chave: `r-${r.cobranca.id}`, nome: r.plataforma.nome, data: r.data, valor: -r.valorReais, manual: !r.cobranca.renovacaoAutomatica, abrir: () => setPlataformaAberta(r.plataforma.id!) })),
+    ...aReceber.map((o) => ({ chave: `c-${o.cliente.id}-${o.data}`, nome: o.cliente.nome, data: o.data, valor: o.valor, manual: false, abrir: () => aoIrPara('entradas') })),
+  ].sort((a, b) => a.data.localeCompare(b.data))
+
   return (
     <div className="tela">
       <AvisoBackup aoAbrirAjustes={aoAbrirAjustes} />
 
-      <section className="cartao-destaque">
-        <span className="rotulo">Custo mensal da empresa</span>
-        <strong className="valor-grande">{formatarReais(resumo.custoMensal)}</strong>
+      <section className={`cartao-destaque ${lucro ? 'cartao-lucro' : 'cartao-prejuizo'}`}>
+        <span className="rotulo">Resultado de {nomeMes(mes)}</span>
+        <strong className="valor-grande">{lucro ? '' : '−'}{formatarReais(Math.abs(resultado.resultado))}</strong>
+        <small className="rotulo">{lucro ? (resultado.resultado ? 'Lucro previsto' : 'Empatado') : 'Prejuízo previsto'} · entradas menos saídas do mês</small>
         <div className="divisao">
-          <div>
-            <span className="rotulo">Gasto real do mês</span>
-            <strong>{formatarReais(resumo.gastoDoMes)}</strong>
-          </div>
-          <div>
-            <span className="rotulo">A reembolsar para mim</span>
-            <strong>{formatarReais(resumo.aReembolsar)}</strong>
-          </div>
+          <button className="botao-sem-estilo" onClick={() => aoIrPara('entradas')}>
+            <span className="rotulo">Entra ↗</span>
+            <strong>{formatarReais(resultado.entrou)}</strong>
+          </button>
+          <button className="botao-sem-estilo" onClick={() => aoIrPara('saidas')}>
+            <span className="rotulo">Sai ↘</span>
+            <strong>{formatarReais(resultado.saiu)}</strong>
+          </button>
         </div>
       </section>
 
@@ -61,20 +82,21 @@ export function InicioEmpresa({ aoAbrirAjustes }: { aoAbrirAjustes: () => void }
       ))}
 
       <section className="bloco">
-        <h2>Próximas renovações</h2>
-        {renovacoes.length === 0 ? (
-          <p className="texto-suave">Nenhuma renovação nos próximos 60 dias.</p>
+        <h2>Próximos 30 dias</h2>
+        {proximos.length === 0 ? (
+          <p className="texto-suave">Nada para pagar nem receber nos próximos 30 dias.</p>
         ) : (
           <div className="lista">
-            {renovacoes.map((r) => (
-              <button key={r.cobranca.id} className="item" onClick={() => setPlataformaAberta(r.plataforma.id!)}>
+            {proximos.map((p) => (
+              <button key={p.chave} className="item" onClick={p.abrir}>
+                <span className="item-icone" style={{ background: p.valor > 0 ? 'var(--ok-fundo)' : 'var(--destaque-suave)' }}>{p.valor > 0 ? '💰' : '🔁'}</span>
                 <span className="item-texto">
-                  <strong>{r.plataforma.nome}</strong>
-                  <small className={r.dias < 0 ? 'texto-perigo' : ''}>{formatarDia(r.data)} · {prazo(r.data)}</small>
+                  <strong>{p.nome}</strong>
+                  <small className={p.data < hoje() ? 'texto-perigo' : ''}>{formatarDiaCurto(p.data)} · {prazo(p.data)}</small>
                 </span>
                 <span className="item-direita">
-                  <strong className="item-valor">{formatarReais(r.valorReais)}</strong>
-                  {!r.cobranca.renovacaoAutomatica ? <Etiqueta tipo={r.alerta ? 'perigo' : 'alerta'}>Manual</Etiqueta> : r.alerta ? <Etiqueta tipo="alerta">Em breve</Etiqueta> : null}
+                  <strong className={`item-valor ${p.valor > 0 ? 'texto-ok' : ''}`}>{p.valor > 0 ? '+' : ''}{formatarReais(Math.abs(p.valor))}</strong>
+                  {p.manual ? <Etiqueta tipo="alerta">Manual</Etiqueta> : null}
                 </span>
               </button>
             ))}
@@ -82,25 +104,31 @@ export function InicioEmpresa({ aoAbrirAjustes }: { aoAbrirAjustes: () => void }
         )}
       </section>
 
-      {resumo.porProduto.length > 0 && <section className="bloco">
-        <h2>Custo por produto</h2>
-        {resumo.porProduto.map((p) => (
-          <div key={p.id} className="linha-categoria">
-            <span style={{ color: p.cor, fontWeight: 600 }}>{p.nome}</span>
-            <strong>{formatarReais(p.valor)}/mês</strong>
-            <BarraProgresso valor={p.valor} total={maiorProduto} />
+      {temHistorico && (
+        <section className="bloco">
+          <h2>Entradas × saídas</h2>
+          <div className="grafico grafico-duplo" role="img" aria-label="Entradas e saídas dos últimos 6 meses">
+            {historico.map((h) => (
+              <div key={h.mes} className={`grafico-coluna ${h.mes === mes ? 'atual' : ''}`}>
+                <div className="grafico-par">
+                  <div className="grafico-barra barra-entrada" style={{ height: `${Math.max(2, (h.entrou / maiorBarra) * 100)}%` }} />
+                  <div className="grafico-barra barra-saida" style={{ height: `${Math.max(2, (h.saiu / maiorBarra) * 100)}%` }} />
+                </div>
+                <span>{nomeMesCurto(h.mes)}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </section>}
+          <small className="texto-suave"><span className="ponto ponto-entrada" /> entrou <span className="ponto ponto-saida" /> saiu (o que foi pago)</small>
+        </section>
+      )}
 
       <section className="bloco">
+        <h2>Você ↔ empresa</h2>
         <div className="linha-resumo">
-          <h2>A reembolsar</h2>
+          <span>A empresa te deve</span>
           <strong>{formatarReais(resumo.aReembolsar)}</strong>
         </div>
-        {reembolsos.length === 0 ? (
-          <p className="texto-suave">Nada pendente.</p>
-        ) : (
+        {reembolsos.length > 0 && (
           <>
             <div className="lista">
               {reembolsos.map((r) => (
@@ -130,33 +158,34 @@ export function InicioEmpresa({ aoAbrirAjustes }: { aoAbrirAjustes: () => void }
             )}
           </>
         )}
+        <div className="linha-resumo">
+          <span>Você retirou em {nomeMes(mes)}</span>
+          <strong>{formatarReais(retiradoNoMes)}</strong>
+        </div>
+        <button className="botao" onClick={() => setVerRetiradas(true)}>Retiradas (pró-labore)</button>
       </section>
 
-      <section className="bloco">
-        <h2>Gastos avulsos do mês</h2>
-        {gastos.length === 0 ? (
-          <p className="texto-suave">Nenhum. Use o + para lançar taxas, compras e outros gastos da empresa.</p>
-        ) : (
-          <div className="lista">
-            {gastos.map((g) => {
-              const c = categorias.find((x) => x.id === g.categoriaId)
-              return (
-                <button key={g.id} className="item" onClick={() => setGastoAberto(g)}>
-                  <span className="item-icone" style={{ background: `${c?.cor ?? '#94a3b8'}22` }}>{c?.icone ?? '📦'}</span>
-                  <span className="item-texto">
-                    <strong>{g.descricao}</strong>
-                    <small>{formatarDiaCurto(g.data)} · {c?.nome}{g.pagoPorMim ? ' · pago por mim' : ''}</small>
-                  </span>
-                  <strong className="item-valor">{formatarReais(g.valor)}</strong>
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </section>
+      {resumo.porProduto.length > 0 && (
+        <section className="bloco">
+          <h2>Custo fixo por produto</h2>
+          {resumo.porProduto.map((p) => (
+            <div key={p.id} className="linha-categoria">
+              <span style={{ color: p.cor, fontWeight: 600 }}>{p.nome}</span>
+              <strong>{formatarReais(p.valor)}/mês</strong>
+              <BarraProgresso valor={p.valor} total={maiorProduto} />
+            </div>
+          ))}
+          <small className="texto-suave">Total: {formatarReais(resumo.custoMensal)} por mês em plataformas.</small>
+        </section>
+      )}
 
       {plataformaAberta !== null && <DetalhePlataforma id={plataformaAberta} aoFechar={() => setPlataformaAberta(null)} />}
-      {gastoAberto && <FormGastoEmpresa gasto={gastoAberto} aoFechar={() => setGastoAberto(null)} />}
+      {verRetiradas && (
+        <Folha titulo="Retiradas" aoFechar={() => setVerRetiradas(false)}>
+          <Retiradas />
+        </Folha>
+      )}
     </div>
   )
 }
+

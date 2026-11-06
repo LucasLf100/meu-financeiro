@@ -129,6 +129,13 @@ export interface Cobranca {
   pagoPorMim: boolean
 }
 
+/**
+ * De onde saiu o dinheiro de um gasto da empresa:
+ * caixa da empresa, cartão da empresa, do meu bolso (Pix/débito/dinheiro) ou meu cartão pessoal.
+ * "bolso" e "cartao-pessoal" são "pago por mim" (a empresa me reembolsa).
+ */
+export type OrigemPagamento = 'caixa' | 'cartao-empresa' | 'bolso' | 'cartao-pessoal'
+
 export interface PagamentoCobranca {
   id?: number
   cobrancaId: number
@@ -138,6 +145,9 @@ export interface PagamentoCobranca {
   pagoPorMim: boolean
   reembolsadoEm?: string
   comprovante?: string
+  origem?: OrigemPagamento
+  cartaoId?: number // cartão pessoal, quando origem = cartao-pessoal
+  gastoPessoalId?: number // compra criada na fatura do cartão pessoal
 }
 
 export interface GastoEmpresa {
@@ -150,6 +160,32 @@ export interface GastoEmpresa {
   pagoPorMim: boolean
   reembolsadoEm?: string
   comprovante?: string
+  origem?: OrigemPagamento
+  cartaoId?: number // cartão pessoal, quando origem = cartao-pessoal
+  gastoPessoalId?: number // compra criada na fatura do cartão pessoal
+}
+
+/** Cliente ou contrato que paga a empresa todo mês (ex.: assinatura do PaintFlow). */
+export interface ClienteEmpresa {
+  id?: number
+  nome: string
+  produtoId?: number
+  valor: number
+  dia: number
+  inicio: string // AAAA-MM
+  fim?: string // AAAA-MM
+  ativa: 0 | 1
+}
+
+/** Dinheiro que entrou na empresa: de um cliente recorrente ou avulso (venda, serviço). */
+export interface EntradaEmpresa {
+  id?: number
+  clienteId?: number
+  competencia: string // AAAA-MM
+  descricao: string
+  valor: number
+  data: string
+  produtoId?: number
 }
 
 export interface Retirada {
@@ -202,6 +238,8 @@ export class BancoFinanceiro extends Dexie {
   retiradas!: EntityTable<Retirada, 'id'>
   recebimentos!: EntityTable<RecebimentoFixo, 'id'>
   entradas!: EntityTable<Entrada, 'id'>
+  clientes!: EntityTable<ClienteEmpresa, 'id'>
+  entradasEmpresa!: EntityTable<EntradaEmpresa, 'id'>
   config!: EntityTable<Config, 'chave'>
 
   constructor() {
@@ -229,6 +267,10 @@ export class BancoFinanceiro extends Dexie {
       recebimentos: '++id, ativa',
       entradas: '++id, recebimentoId, competencia, data',
     })
+    this.version(4).stores({
+      clientes: '++id, ativa, produtoId',
+      entradasEmpresa: '++id, clienteId, competencia, data, produtoId',
+    })
   }
 }
 
@@ -238,7 +280,7 @@ export const db = new BancoFinanceiro()
 export const TABELAS = [
   'categorias', 'gastos', 'contas', 'pagamentosConta', 'ajustesConta', 'cartoes', 'parcelas',
   'pagamentosFatura', 'produtos', 'plataformas', 'cobrancas', 'pagamentosCobranca',
-  'gastosEmpresa', 'retiradas', 'recebimentos', 'entradas', 'config',
+  'gastosEmpresa', 'retiradas', 'recebimentos', 'entradas', 'clientes', 'entradasEmpresa', 'config',
 ] as const
 
 export async function lerConfig<T>(chave: string, padrao: T): Promise<T> {

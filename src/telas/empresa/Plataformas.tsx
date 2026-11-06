@@ -4,6 +4,7 @@ import { db, type Cobranca } from '../../db'
 import { formatarDolares, formatarReais } from '../../dinheiro'
 import { formatarDia, prazo } from '../../datas'
 import { custoMensal, lerCotacao } from '../../regras/empresa'
+import { apagarPagamentoCobranca, ORIGENS, origemDe } from '../../regras/empresaMes'
 import { Etiqueta, Folha, Opcoes, Vazio } from '../../componentes/ui'
 import { descreverCobranca, NOME_STATUS } from './comum'
 import { FormCobranca, FormPagamento, FormPlataforma } from './Formularios'
@@ -137,12 +138,12 @@ export function DetalhePlataforma({ id, aoFechar }: { id: number; aoFechar: () =
                 <span className="item-texto">
                   <strong>{formatarReais(p.valor)}{p.valorOriginal ? ` (${formatarDolares(p.valorOriginal)})` : ''}</strong>
                   <small>
-                    {formatarDia(p.pagoEm)}
+                    {formatarDia(p.pagoEm)} · {ORIGENS.find((o) => o.valor === origemDe(p))?.icone} {ORIGENS.find((o) => o.valor === origemDe(p))?.rotulo}
                     {p.pagoPorMim ? (p.reembolsadoEm ? ` · reembolsado em ${formatarDia(p.reembolsadoEm)}` : ' · a reembolsar') : ''}
                     {p.comprovante ? ` · ${p.comprovante}` : ''}
                   </small>
                 </span>
-                <button className="botao-link texto-suave" onClick={() => db.pagamentosCobranca.delete(p.id!)} aria-label="Apagar pagamento">Apagar</button>
+                <button className="botao-link texto-suave" onClick={() => apagarPagamentoCobranca(p)} aria-label="Apagar pagamento">Apagar</button>
               </div>
             ))}
           </div>

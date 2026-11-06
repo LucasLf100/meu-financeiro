@@ -11,12 +11,13 @@ import { Opcoes } from './componentes/ui'
 import { Cartoes } from './telas/Cartoes'
 import { FormGasto } from './telas/FormGasto'
 import { Plataformas } from './telas/empresa/Plataformas'
-import { Cobrancas } from './telas/empresa/Cobrancas'
-import { Retiradas } from './telas/empresa/Retiradas'
-import { FormGastoEmpresa } from './telas/empresa/Formularios'
+import { Saidas } from './telas/empresa/Saidas'
+import { Entradas } from './telas/empresa/Entradas'
+import { NovoEmpresa } from './telas/empresa/NovoEmpresa'
 import { Ajustes } from './telas/Ajustes'
 import { Relatorios } from './telas/Relatorios'
 import { aoSairDoApp, rearmarVoltar, useVoltar } from './voltar'
+import { aplicarCores } from './tema'
 import { Busca } from './telas/Busca'
 
 const CHAVE_MODO = 'mf-modo'
@@ -33,7 +34,7 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(CHAVE_MODO, modo)
     document.documentElement.dataset.modo = modo
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', modo === 'empresa' ? '#2563eb' : '#5b21b6')
+    aplicarCores()
   }, [modo])
 
   function trocarModo(novo: Modo) {
@@ -133,14 +134,14 @@ export default function App() {
           </div>
         )}
         {modo === 'pessoal' && aba === 'cartoes' && <Cartoes />}
-        {modo === 'empresa' && aba === 'inicio' && <InicioEmpresa aoAbrirAjustes={abrirAjustes} />}
+        {modo === 'empresa' && aba === 'inicio' && <InicioEmpresa aoAbrirAjustes={abrirAjustes} aoIrPara={irPara} />}
         {modo === 'empresa' && aba === 'plataformas' && <Plataformas />}
-        {modo === 'empresa' && aba === 'cobrancas' && <Cobrancas />}
-        {modo === 'empresa' && aba === 'retiradas' && <Retiradas />}
+        {modo === 'empresa' && aba === 'saidas' && <Saidas />}
+        {modo === 'empresa' && aba === 'entradas' && <Entradas />}
       </main>
       <BarraInferior modo={modo} aba={aba} aoTrocarAba={irPara} aoNovo={() => setNovoAberto(true)} />
       {novoAberto && modo === 'pessoal' && <FormGasto aoFechar={() => setNovoAberto(false)} />}
-      {novoAberto && modo === 'empresa' && <FormGastoEmpresa aoFechar={() => setNovoAberto(false)} />}
+      {novoAberto && modo === 'empresa' && <NovoEmpresa aoFechar={() => setNovoAberto(false)} />}
       {avisoSair && <div className="aviso-sair" role="status">Toque em voltar de novo para sair</div>}
     </div>
   )
