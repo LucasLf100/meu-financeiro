@@ -3,11 +3,26 @@
 const formatoBRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })
 const formatoUSD = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD' })
 
+// Olho do topo: com os valores escondidos, tudo aparece como "R$ ••••".
+export const CHAVE_MOSTRAR_AO_ABRIR = 'mf-mostrar-valores'
+let ocultos = localStorage.getItem(CHAVE_MOSTRAR_AO_ABRIR) !== 'sim'
+export const valoresOcultos = () => ocultos
+export function definirValoresOcultos(v: boolean) {
+  ocultos = v
+}
+
+/** Sempre mostra o valor, mesmo com o olho fechado (para o olho de cada valor). */
+export function formatarReaisSempre(centavos: number): string {
+  return formatoBRL.format(centavos / 100)
+}
+
 export function formatarReais(centavos: number): string {
+  if (ocultos) return 'R$ ••••'
   return formatoBRL.format(centavos / 100)
 }
 
 export function formatarDolares(centavos: number): string {
+  if (ocultos) return 'US$ ••••'
   return formatoUSD.format(centavos / 100)
 }
 

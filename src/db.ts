@@ -64,6 +64,7 @@ export interface PagamentoConta {
   viaFaturaCartaoId?: number // marcado como pago ao pagar a fatura deste cartão
   forma?: Exclude<FormaConta, 'varia'> // como foi paga neste mês
   cartaoId?: number // se foi no cartão: qual
+  comReserva?: boolean // pago com dinheiro que eu já tinha (não desconta das entradas do mês)
 }
 
 export interface Cartao {
@@ -92,6 +93,7 @@ export interface PagamentoFatura {
   fatura: string
   valor: number
   pagoEm: string
+  comReserva?: boolean // pago com dinheiro que eu já tinha (não desconta das entradas do mês)
 }
 
 export interface Produto {

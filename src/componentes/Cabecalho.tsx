@@ -5,9 +5,11 @@ interface Props {
   aoTrocarModo: (modo: Modo) => void
   aoAbrirAjustes: () => void
   aoAbrirBusca: () => void
+  ocultos: boolean
+  aoAlternarOcultos: () => void
 }
 
-export function Cabecalho({ modo, aoTrocarModo, aoAbrirAjustes, aoAbrirBusca }: Props) {
+export function Cabecalho({ modo, aoTrocarModo, aoAbrirAjustes, aoAbrirBusca, ocultos, aoAlternarOcultos }: Props) {
   return (
     <header className="cabecalho">
       <div className="seletor-modo" role="tablist" aria-label="Modo do app">
@@ -18,6 +20,13 @@ export function Cabecalho({ modo, aoTrocarModo, aoAbrirAjustes, aoAbrirBusca }: 
           Empresa
         </button>
       </div>
+      <button className="botao-icone" onClick={aoAlternarOcultos} aria-label={ocultos ? 'Mostrar valores' : 'Esconder valores'} aria-pressed={!ocultos}>
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+          {ocultos && <path d="M3 3l18 18" />}
+        </svg>
+      </button>
       <button className="botao-icone" onClick={aoAbrirBusca} aria-label="Buscar">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="7" />

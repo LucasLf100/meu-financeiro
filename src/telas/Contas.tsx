@@ -297,6 +297,20 @@ export function EtiquetaStatus({ status }: { status: OcorrenciaConta['status'] }
 }
 
 /** Bolinha no canto do ícone: verde se paga, vermelha se não. */
+/** Com qual dinheiro foi pago: o do mês (desconta das entradas) ou o que eu já tinha (não desconta). */
+export function PagoCom({ comReserva, aoMudar }: { comReserva: boolean; aoMudar: (v: boolean) => void }) {
+  return (
+    <Campo rotulo="Pago com" dica={comReserva ? 'Não desconta das entradas deste mês.' : 'Desconta das entradas deste mês.'}>
+      <Opcoes
+        rotulo="Pago com"
+        opcoes={[{ valor: 0, rotulo: '💵 Dinheiro deste mês' }, { valor: 1, rotulo: '🏦 Que eu já tinha' }]}
+        valor={comReserva ? 1 : 0}
+        aoMudar={(v) => aoMudar(v === 1)}
+      />
+    </Campo>
+  )
+}
+
 export function MarcaPagamento({ status }: { status: OcorrenciaConta['status'] }) {
   return <span className={`marca-pagamento ${status === 'paga' ? 'paga' : 'aberta'}`} aria-label={status === 'paga' ? 'Paga' : 'Não paga'} />
 }
@@ -310,6 +324,7 @@ export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaCon
   const cartoesAtivos = useLiveQuery(() => db.cartoes.where({ ativo: 1 }).toArray(), [], [])
   const [cartaoPago, setCartaoPago] = useState<number | undefined>(conta.cartaoId)
   const cartaoPagoEscolhido = cartaoPago ?? cartoesAtivos[0]?.id
+  const [comReserva, setComReserva] = useState(false)
   const [editando, setEditando] = useState(false)
   const [excluindo, setExcluindo] = useState(false)
   const [erro, setErro] = useState('')
@@ -325,6 +340,7 @@ export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaCon
       pagoEm: data,
       forma: comoPagou,
       cartaoId: comoPagou === 'cartao' ? cartaoPagoEscolhido : undefined,
+      comReserva: comReserva || undefined,
     })
     aoFechar()
   }
@@ -352,6 +368,9 @@ export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaCon
       {pagamento ? (
         <>
           <p className="linha-info">Paga em {formatarDia(pagamento.pagoEm)}: <strong>{formatarReais(pagamento.valor)}</strong>{pagamento.forma ? ` · ${infoForma(pagamento.forma)?.icone} ${infoForma(pagamento.forma)?.rotulo}` : ''}{pagamento.viaFaturaCartaoId ? ' (junto com a fatura)' : ''}</p>
+          {!pagamento.viaFaturaCartaoId && (
+            <PagoCom comReserva={!!pagamento.comReserva} aoMudar={(v) => db.pagamentosConta.update(pagamento.id!, { comReserva: v || undefined })} />
+          )}
           <button className="botao" onClick={desmarcar}>Desmarcar pagamento</button>
         </>
       ) : (
@@ -382,6 +401,7 @@ export function AcoesConta({ ocorrencia, aoFechar }: { ocorrencia: OcorrenciaCon
               </select>
             </Campo>
           )}
+          <PagoCom comReserva={comReserva} aoMudar={setComReserva} />
           <button className="botao botao-principal" onClick={marcarPaga}>Marcar como paga</button>
         </>
       )}

@@ -41,7 +41,12 @@ export interface ResumoPessoal {
   gastosDoMes: number
   entradasPrevistas: number
   entradasRecebidas: number
+  /** Fim do mês: entradas − tudo do mês, exceto o que foi pago com dinheiro que eu já tinha. */
   sobraPrevista: number
+  /** Livre agora: o que já entrou − o que já foi pago com dinheiro deste mês. */
+  livreAgora: number
+  /** Quanto foi pago com dinheiro que eu já tinha. */
+  pagoComReserva: number
   /** Tudo o que sai no mês: o que já foi pago e o que falta pagar. */
   saidas: { total: number; pago: number; falta: number; contasFixas: number; parcelasECartao: number; gastosAvulsos: number; empresa: number }
 }
@@ -142,7 +147,11 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
   }
 
   // Tudo o que sai no mês (dívida + recorrentes), pago ou não: usado na sobra.
-  const pagoTudo = contasMes.filter((o) => o.status === 'paga').reduce((s, o) => s + o.valor, 0) + pagoFaturas
+  // Contas pagas junto com a fatura já estão no valor pago da fatura: não conta de novo.
+  const pagoTudo = contasMes.filter((o) => o.status === 'paga' && !o.pagamento?.viaFaturaCartaoId).reduce((s, o) => s + o.valor, 0) + pagoFaturas
+  const pagoComReserva =
+    contasMes.filter((o) => o.status === 'paga' && o.pagamento?.comReserva && !o.pagamento.viaFaturaCartaoId).reduce((s, o) => s + o.valor, 0) +
+    pagamentosFatura.filter((p) => p.fatura === mes && p.comReserva).reduce((s, p) => s + p.valor, 0)
   const pendenteTudo = compromissos.reduce((s, c) => s + c.valor, 0)
 
   // Gráfico: quanto havia para pagar em cada um dos últimos 6 meses (contas + faturas).
@@ -161,7 +170,10 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
   const empresaPago = empresa.ativo ? empresa.pago : 0
   const empresaFalta = empresa.ativo ? empresa.falta : 0
   // Sobra = o que entra no mês − contas e faturas do mês − gastos pagos na hora − empresa do meu bolso.
-  const sobraPrevista = entradasPrevistas - (pagoTudo + pendenteTudo) - gastosAVista - empresaPago - empresaFalta
+  // O que foi pago com dinheiro que eu já tinha não sai das entradas do mês.
+  const pagoComDinheiroDoMes = pagoTudo - pagoComReserva + gastosAVista + empresaPago
+  const sobraPrevista = entradasPrevistas - pagoComDinheiroDoMes - pendenteTudo - empresaFalta
+  const livreAgora = entradasRecebidas - pagoComDinheiroDoMes
 
   // Saídas do mês: tudo o que já saiu ou vai sair (contas, parcelas, faturas e gastos pagos na hora).
   const contasRecorrentesMes = recorrentes.total + recorrentesAtrasadasAntes.filter((o) => o.status !== 'paga').reduce((s, o) => s + o.valor, 0)
@@ -195,6 +207,8 @@ export async function resumoPessoal(): Promise<ResumoPessoal> {
     entradasPrevistas,
     entradasRecebidas,
     sobraPrevista,
+    livreAgora,
+    pagoComReserva,
     saidas,
   }
 }

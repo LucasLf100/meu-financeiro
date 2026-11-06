@@ -19,10 +19,13 @@ import { Relatorios } from './telas/Relatorios'
 import { aoSairDoApp, rearmarVoltar, useVoltar } from './voltar'
 import { aplicarCores } from './tema'
 import { Busca } from './telas/Busca'
+import { definirValoresOcultos, valoresOcultos } from './dinheiro'
 
 const CHAVE_MODO = 'mf-modo'
 
 export default function App() {
+  const [ocultos, setOcultos] = useState(valoresOcultos)
+  const alternarOcultos = () => { definirValoresOcultos(!ocultos); setOcultos(!ocultos) }
   const [modo, setModo] = useState<Modo>(() => (localStorage.getItem(CHAVE_MODO) === 'empresa' ? 'empresa' : 'pessoal'))
   const [aba, setAba] = useState<Aba>('inicio')
   const [ajustesAberto, setAjustesAberto] = useState(false)
@@ -105,7 +108,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <Cabecalho modo={modo} aoTrocarModo={trocarModo} aoAbrirAjustes={abrirAjustes} aoAbrirBusca={() => setBuscaAberta(true)} />
+      <Cabecalho modo={modo} aoTrocarModo={trocarModo} aoAbrirAjustes={abrirAjustes} aoAbrirBusca={() => setBuscaAberta(true)} ocultos={ocultos} aoAlternarOcultos={alternarOcultos} />
       <main
         key={modo}
         className={`conteudo ${entrada ? `entrar-${entrada}` : ""}`}

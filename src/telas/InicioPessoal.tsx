@@ -8,7 +8,7 @@ import { AcoesConta, EtiquetaStatus, MarcaPagamento } from './Contas'
 import { DetalheCartao } from './Cartoes'
 import { contasDentroDeFaturas, faturasDoMes, resumoDaFatura, type FaturaDoMes } from '../regras/cartoes'
 import { AvisoBackup } from '../componentes/AvisoBackup'
-import { BarraProgresso, Folha, Opcoes } from '../componentes/ui'
+import { BarraProgresso, Folha, Opcoes, Valor } from '../componentes/ui'
 import type { Aba } from '../componentes/BarraInferior'
 
 interface Props {
@@ -34,15 +34,15 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
 
       <section className="cartao-destaque clicavel" onClick={() => setVerDetalhes(true)} role="button" tabIndex={0} aria-label="Ver como a dívida é calculada">
         <span className="rotulo">Dívida total · toque para ver o detalhe</span>
-        <strong className="valor-grande">{formatarReais(r.dividaTotal)}</strong>
+        <strong className="valor-grande"><Valor v={r.dividaTotal} /></strong>
         <div className="divisao">
           <div>
             <span className="rotulo">Vence em {MESES[Number(mes.slice(5, 7)) - 1]}</span>
-            <strong>{formatarReais(r.venceEsteMes)}</strong>
+            <strong><Valor v={r.venceEsteMes} /></strong>
           </div>
           <div>
             <span className="rotulo">Parcelas futuras</span>
-            <strong>{formatarReais(r.parcelasFuturas)}</strong>
+            <strong><Valor v={r.parcelasFuturas} /></strong>
           </div>
         </div>
         {totalDoMes > 0 && (
@@ -55,15 +55,15 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
 
       <section className="cartao-destaque cartao-saidas">
         <span className="rotulo">A pagar em {MESES[Number(mes.slice(5, 7)) - 1]}</span>
-        <strong className="valor-grande">{formatarReais(r.saidas.total)}</strong>
+        <strong className="valor-grande"><Valor v={r.saidas.total} /></strong>
         <div className="divisao">
           <div>
             <span className="rotulo">Já pago</span>
-            <strong>{formatarReais(r.saidas.pago)}</strong>
+            <strong><Valor v={r.saidas.pago} /></strong>
           </div>
           <div>
             <span className="rotulo">Falta pagar</span>
-            <strong>{formatarReais(r.saidas.falta)}</strong>
+            <strong><Valor v={r.saidas.falta} /></strong>
           </div>
         </div>
         {r.saidas.total > 0 && (
@@ -131,15 +131,22 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
           <>
             <div className="linha-resumo">
               <span>Entra no mês</span>
-              <strong className="texto-ok">{formatarReais(r.entradasPrevistas)}</strong>
+              <strong className="texto-ok"><Valor v={r.entradasPrevistas} /></strong>
             </div>
             <BarraProgresso valor={r.entradasRecebidas} total={r.entradasPrevistas} />
             <small className="texto-suave">{formatarReais(r.entradasRecebidas)} já recebidos</small>
             <div className="linha-resumo">
-              <span>Sobra prevista</span>
-              <strong className={r.sobraPrevista < 0 ? 'texto-perigo' : 'texto-ok'}>{formatarReais(r.sobraPrevista)}</strong>
+              <span>Livre agora</span>
+              <strong className={r.livreAgora < 0 ? 'texto-perigo' : 'texto-ok'}><Valor v={r.livreAgora} /></strong>
             </div>
-            <small className="texto-suave">Entradas − contas e faturas do mês − gastos pagos na hora.</small>
+            <div className="linha-resumo">
+              <span>No fim do mês</span>
+              <strong className={r.sobraPrevista < 0 ? 'texto-perigo' : 'texto-ok'}><Valor v={r.sobraPrevista} /></strong>
+            </div>
+            <small className="texto-suave">
+              Só desconta o que você pagou com o dinheiro deste mês.
+              {r.pagoComReserva > 0 ? ` ${formatarReais(r.pagoComReserva)} foram pagos com dinheiro que você já tinha.` : ''}
+            </small>
           </>
         )}
       </section>
@@ -166,7 +173,7 @@ export function InicioPessoal({ aoAbrirAjustes, aoAbrirRelatorios, aoIrPara, aoI
           {r.cartoes.map(({ cartao, usado }) => (
             <button key={cartao.id} className="linha-categoria linha-clicavel" onClick={() => aoIrPara('cartoes')}>
               <span>{cartao.nome}</span>
-              <strong>{formatarReais(cartao.limite - usado)} livres</strong>
+              <strong><Valor v={cartao.limite - usado} /> livres</strong>
               <BarraProgresso valor={usado} total={cartao.limite} perigo={usado > cartao.limite} />
             </button>
           ))}
@@ -265,7 +272,7 @@ function ContasDoMes({ aoVer }: { aoVer: () => void }) {
           {total > 0 && total === pago && <small className="texto-ok">Tudo pago neste mês. 🎉</small>}
           <div className="linha-resumo">
             <span>Total</span>
-            <strong>{formatarReais(total)}</strong>
+            <strong><Valor v={total} /></strong>
           </div>
           <BarraProgresso valor={pago} total={total} perigo={atrasadas > 0} />
           <div className="linha-resumo">

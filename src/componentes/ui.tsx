@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react'
+import { formatarReaisSempre, valoresOcultos } from '../dinheiro'
 import { nomeMes, somarMeses } from '../datas'
 import { useVoltar } from '../voltar'
 
@@ -143,4 +144,28 @@ export function mascararValor(texto: string): string {
   const digitos = texto.replace(/\D/g, '').replace(/^0+/, '').slice(0, 11)
   if (!digitos) return ''
   return valorParaTexto(Number(digitos))
+}
+
+/** Valor com um olhinho ao lado: mostra ou esconde só este valor. Volta ao padrão quando o olho do topo muda. */
+export function Valor({ v, prefixo = '' }: { v: number; prefixo?: string }) {
+  const global = valoresOcultos()
+  const [escolha, setEscolha] = useState<{ global: boolean; oculto: boolean } | null>(null)
+  const oculto = escolha && escolha.global === global ? escolha.oculto : global
+  function alternar(e: MouseEvent) {
+    e.stopPropagation()
+    e.preventDefault()
+    setEscolha({ global, oculto: !oculto })
+  }
+  return (
+    <span className="valor-olho">
+      {prefixo}{oculto ? 'R$ ••••' : formatarReaisSempre(v)}
+      <span role="button" tabIndex={0} className="olho-valor" onClick={alternar} aria-label={oculto ? 'Mostrar valor' : 'Esconder valor'}>
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+          <circle cx="12" cy="12" r="3" />
+          {oculto && <path d="M3 3l18 18" />}
+        </svg>
+      </span>
+    </span>
+  )
 }

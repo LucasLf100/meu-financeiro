@@ -3,9 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Cartao } from '../db'
 import { formatarReais, lerValor } from '../dinheiro'
 import { formatarDia, formatarDiaCurto, nomeMes } from '../datas'
-import { contasDoCartao, datasDaFatura, desfazerPagamentoFatura, faturaAberta, limiteUsado, listarFaturas, pagarFatura, recalcularFaturasDoCartao, statusFatura, type StatusFatura } from '../regras/cartoes'
+import { contasDoCartao, datasDaFatura, desfazerPagamentoFatura, faturaAberta, limiteUsado, listarFaturas, mudarDinheiroDaFatura, pagarFatura, recalcularFaturasDoCartao, statusFatura, type StatusFatura } from '../regras/cartoes'
 import { BarraProgresso, Campo, Etiqueta, Folha, SeletorMes, Vazio, valorParaTexto, mascararValor } from '../componentes/ui'
 import { CORES } from '../componentes/SeletorCategoria'
+import { PagoCom } from './Contas'
 
 export function Cartoes() {
   const dados = useLiveQuery(async () => ({ cartoes: await db.cartoes.where({ ativo: 1 }).toArray(), faturas: await listarFaturas() }))
@@ -57,6 +58,7 @@ export function DetalheCartao({ cartao: inicial, aoFechar, faturaInicial }: { ca
   const cartao = useLiveQuery(() => db.cartoes.get(inicial.id!), [inicial.id], inicial) ?? inicial
   const [fatura, setFatura] = useState(faturaInicial ?? faturaAberta(inicial))
   const [editando, setEditando] = useState(false)
+  const [comReserva, setComReserva] = useState(false)
 
   const dados = useLiveQuery(async () => {
     const [parcelas, pagamento, todasParcelas] = await Promise.all([
@@ -94,7 +96,7 @@ export function DetalheCartao({ cartao: inicial, aoFechar, faturaInicial }: { ca
     .filter((x) => x.restantes.length > 0)
 
   async function pagar() {
-    await pagarFatura(cartao as Cartao & { id: number }, fatura, totalCompras)
+    await pagarFatura(cartao as Cartao & { id: number }, fatura, totalCompras, undefined, comReserva)
   }
 
   return (
@@ -116,11 +118,13 @@ export function DetalheCartao({ cartao: inicial, aoFechar, faturaInicial }: { ca
         <>
           <p className="linha-info">Paga em {formatarDia(pagamento.pagoEm)}: <strong>{formatarReais(pagamento.valor)}</strong></p>
           {contas.length > 0 && <p className="texto-suave">As {contas.length} contas fixas deste cartão foram marcadas como pagas junto.</p>}
+          <PagoCom comReserva={!!pagamento.comReserva} aoMudar={(v) => mudarDinheiroDaFatura(cartao.id!, fatura, v)} />
           <button className="botao" onClick={() => desfazerPagamentoFatura(cartao.id!, fatura)}>Desfazer pagamento</button>
         </>
       ) : (
         total > 0 && (
           <>
+            <PagoCom comReserva={comReserva} aoMudar={setComReserva} />
             <button className="botao botao-principal" onClick={pagar}>Pagar fatura ({formatarReais(total)})</button>
             {contas.length > 0 && <small className="texto-suave">As contas fixas deste cartão ficam pagas junto.</small>}
           </>

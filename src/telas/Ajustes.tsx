@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, lerConfig, salvarConfig } from '../db'
 import { exportarBackup, lerBackup, restaurarBackup, contarRegistros, type ArquivoBackup } from '../backup'
-import { lerValor } from '../dinheiro'
+import { CHAVE_MOSTRAR_AO_ABRIR, lerValor } from '../dinheiro'
 import { Categorias } from './Categorias'
 import { Produtos } from './Produtos'
 import { adicionarBackup, contarParaAdicionar } from '../importar'
@@ -91,6 +91,7 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
   const ultimoBackup = useLiveQuery(() => lerConfig<string | null>('ultimoBackup', null), [], null)
   const cotacao = useLiveQuery(() => lerConfig<number>('cotacaoDolar', 550), [], 550)
   const pagoPorMimPadrao = useLiveQuery(() => lerConfig<boolean>('pagoPorMimPadrao', true), [], true)
+  const [esconderAoAbrir, setEsconderAoAbrir] = useState(() => localStorage.getItem(CHAVE_MOSTRAR_AO_ABRIR) !== 'sim')
   const empresaNoPessoal = useLiveQuery(() => lerConfig<boolean>('empresaNoPessoal', true), [], true)
 
   const [tema, setTema] = useState<Tema>(lerTema)
@@ -210,6 +211,12 @@ export function Ajustes({ aoVoltar }: { aoVoltar: () => void }) {
 
           <section className="bloco">
             <h2>Aparência</h2>
+            <Interruptor
+              rotulo="Esconder valores ao abrir o app"
+              dica="Os valores aparecem como R$ ••••. Toque no olho no topo para mostrar."
+              ligado={esconderAoAbrir}
+              aoMudar={(v) => { setEsconderAoAbrir(v); if (v) localStorage.removeItem(CHAVE_MOSTRAR_AO_ABRIR); else localStorage.setItem(CHAVE_MOSTRAR_AO_ABRIR, 'sim') }}
+            />
             <Opcoes
               rotulo="Tema"
               opcoes={[

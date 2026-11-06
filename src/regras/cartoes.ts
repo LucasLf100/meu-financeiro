@@ -196,7 +196,7 @@ export function cartaoDaConta(nome: string, cartaoId: number | undefined, cartoe
  * Paga a fatura: registra o pagamento e marca como pagas as contas fixas desse cartão no mês.
  * O valor registrado é o total: compras e parcelas + contas fixas do cartão.
  */
-export async function pagarFatura(cartao: Cartao & { id: number }, fatura: string, totalCompras: number, dia = hoje()) {
+export async function pagarFatura(cartao: Cartao & { id: number }, fatura: string, totalCompras: number, dia = hoje(), comReserva = false) {
   const contas = await contasDoCartao(cartao.id, fatura)
   await db.transaction('rw', db.pagamentosFatura, db.pagamentosConta, async () => {
     await db.pagamentosFatura.add({
@@ -204,11 +204,20 @@ export async function pagarFatura(cartao: Cartao & { id: number }, fatura: strin
       fatura,
       valor: totalCompras + contas.reduce((s, o) => s + o.valor, 0),
       pagoEm: dia,
+      comReserva: comReserva || undefined,
     })
     for (const o of contas) {
       if (o.pagamento) continue
-      await db.pagamentosConta.add({ contaId: o.conta.id, competencia: fatura, valor: o.valor, pagoEm: dia, viaFaturaCartaoId: cartao.id, forma: 'cartao', cartaoId: cartao.id })
+      await db.pagamentosConta.add({ contaId: o.conta.id, competencia: fatura, valor: o.valor, pagoEm: dia, viaFaturaCartaoId: cartao.id, forma: 'cartao', cartaoId: cartao.id, comReserva: comReserva || undefined })
     }
+  })
+}
+
+/** Muda com qual dinheiro a fatura foi paga (e as contas pagas junto com ela). */
+export async function mudarDinheiroDaFatura(cartaoId: number, fatura: string, comReserva: boolean) {
+  await db.transaction('rw', db.pagamentosFatura, db.pagamentosConta, async () => {
+    await db.pagamentosFatura.where({ cartaoId, fatura }).modify({ comReserva: comReserva || undefined })
+    await db.pagamentosConta.where({ competencia: fatura }).filter((p) => p.viaFaturaCartaoId === cartaoId).modify({ comReserva: comReserva || undefined })
   })
 }
 

@@ -6,7 +6,7 @@ import { formatarDia, formatarDiaCurto, hoje, mesAtual, mesDe, nomeMes, nomeMesC
 import { marcarReembolsado, proximasRenovacoes, reembolsosPendentes, resumoEmpresa, type ItemReembolso } from '../regras/empresa'
 import { entradasEmpresaDoMes, resultadoEmpresa } from '../regras/empresaMes'
 import { AvisoBackup } from '../componentes/AvisoBackup'
-import { BarraProgresso, Etiqueta, Folha } from '../componentes/ui'
+import { BarraProgresso, Etiqueta, Folha, Valor } from '../componentes/ui'
 import { DetalhePlataforma } from './empresa/Plataformas'
 import { Retiradas } from './empresa/Retiradas'
 
@@ -60,16 +60,16 @@ export function InicioEmpresa({ aoAbrirAjustes, aoIrPara }: { aoAbrirAjustes: ()
 
       <section className={`cartao-destaque ${lucro ? 'cartao-lucro' : 'cartao-prejuizo'}`}>
         <span className="rotulo">Resultado de {nomeMes(mes)}</span>
-        <strong className="valor-grande">{lucro ? '' : '−'}{formatarReais(Math.abs(resultado.resultado))}</strong>
+        <strong className="valor-grande"><Valor v={resultado.resultado} /></strong>
         <small className="rotulo">{lucro ? (resultado.resultado ? 'Lucro previsto' : 'Empatado') : 'Prejuízo previsto'} · entradas menos saídas do mês</small>
         <div className="divisao">
           <button className="botao-sem-estilo" onClick={() => aoIrPara('entradas')}>
             <span className="rotulo">Entra ↗</span>
-            <strong>{formatarReais(resultado.entrou)}</strong>
+            <strong><Valor v={resultado.entrou} /></strong>
           </button>
           <button className="botao-sem-estilo" onClick={() => aoIrPara('saidas')}>
             <span className="rotulo">Sai ↘</span>
-            <strong>{formatarReais(resultado.saiu)}</strong>
+            <strong><Valor v={resultado.saiu} /></strong>
           </button>
         </div>
       </section>
@@ -126,7 +126,7 @@ export function InicioEmpresa({ aoAbrirAjustes, aoIrPara }: { aoAbrirAjustes: ()
         <h2>Você ↔ empresa</h2>
         <div className="linha-resumo">
           <span>A empresa te deve</span>
-          <strong>{formatarReais(resumo.aReembolsar)}</strong>
+          <strong><Valor v={resumo.aReembolsar} /></strong>
         </div>
         {reembolsos.length > 0 && (
           <>
@@ -160,7 +160,7 @@ export function InicioEmpresa({ aoAbrirAjustes, aoIrPara }: { aoAbrirAjustes: ()
         )}
         <div className="linha-resumo">
           <span>Você retirou em {nomeMes(mes)}</span>
-          <strong>{formatarReais(retiradoNoMes)}</strong>
+          <strong><Valor v={retiradoNoMes} /></strong>
         </div>
         <button className="botao" onClick={() => setVerRetiradas(true)}>Retiradas (pró-labore)</button>
       </section>
